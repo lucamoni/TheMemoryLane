@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:geofence_service/geofence_service.dart';
 import '../services/geofencing_manager.dart';
-import '../services/notification_service.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
+import '../widgets/add_geofence_sheet.dart';
 
 class GeofencesPage extends StatefulWidget {
   const GeofencesPage({super.key});
@@ -11,16 +13,20 @@ class GeofencesPage extends StatefulWidget {
   State<GeofencesPage> createState() => _GeofencesPageState();
 }
 
-class _GeofencesPageState extends State<GeofencesPage> {
-  final _nameController = TextEditingController();
-  final _radiusController = TextEditingController(text: '200');
-  double? _currentLat;
-  double? _currentLng;
+class _GeofencesPageState extends State<GeofencesPage>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  GoogleMapController? _mapController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _radiusController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -30,143 +36,208 @@ class _GeofencesPageState extends State<GeofencesPage> {
     final geofences = geofencingManager.getGeofences();
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: const Text('Luoghi del Cuore'),
+        backgroundColor: Colors.transparent,
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: Theme.of(context).primaryColor,
+          unselectedLabelColor: Colors.grey,
+          indicatorSize: TabBarIndicatorSize.label,
+          tabs: const [
+            Tab(icon: Icon(Icons.list), text: 'Lista'),
+            Tab(icon: Icon(Icons.map_outlined), text: 'Mappa'),
+          ],
+        ),
       ),
-      body: Column(
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          // Sezione per aggiungere geofence
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Aggiungi un Luogo del Cuore',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Nome del luogo',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.location_on),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _radiusController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Raggio (metri)',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.zoom_out_map),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (_currentLat != null && _currentLng != null)
-                      Text(
-                        'Posizione attuale: $_currentLat, $_currentLng',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                      )
-                    else
-                      const Text(
-                        'Posizione non disponibile',
-                        style: TextStyle(fontSize: 12, color: Colors.red),
-                      ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () => _addGeofence(geofencingManager),
-                        icon: const Icon(Icons.add),
-                        label: const Text('Salva Luogo'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          // Tab Lista
+          geofences.isEmpty
+              ? _buildEmptyState()
+              : _buildGeofencesList(geofences, geofencingManager),
+          // Tab Mappa
+          _buildGeofencesMap(geofences),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddGeofenceSheet(geofencingManager),
+        icon: const Icon(Icons.add_location_rounded),
+        label: const Text('Aggiungi Luogo'),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.favorite_border_rounded,
+            size: 64,
+            color: Colors.grey.withOpacity(0.3),
           ),
-          // Lista dei geofence
-          Expanded(
-            child: geofences.isEmpty
-                ? const Center(
-                    child: Text('Nessun luogo del cuore ancora'),
-                  )
-                : ListView.builder(
-                    itemCount: geofences.length,
-                    itemBuilder: (context, index) {
-                      final geofence = geofences[index];
-                      return Card(
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        child: ListTile(
-                          leading: const Icon(Icons.location_on_outlined),
-                          title: Text(geofence.id),
-                          subtitle: Text(
-                            'Lat: ${geofence.latitude.toStringAsFixed(4)}, '
-                            'Lng: ${geofence.longitude.toStringAsFixed(4)}\n'
-                            'Raggio: ${geofence.radius.first.length.toStringAsFixed(0)}m',
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () => _deleteGeofence(
-                              context,
-                              geofence.id,
-                              geofencingManager,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+          const SizedBox(height: 16),
+          const Text(
+            'Ancora nessun luogo preferito',
+            style: TextStyle(color: Colors.grey, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 40),
+            child: Text(
+              'Salva i posti che ami per ricevere una notifica quando ci passi vicino.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _addGeofence(GeofencingManager manager) async {
-    if (_nameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Inserisci il nome del luogo')),
-      );
-      return;
-    }
-
-    if (_currentLat == null || _currentLng == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Posizione non disponibile')),
-      );
-      return;
-    }
-
-    final radius = double.tryParse(_radiusController.text) ?? 200;
-
-    await manager.addGeofence(
-      id: _nameController.text,
-      latitude: _currentLat!,
-      longitude: _currentLng!,
-      radiusInMeter: radius,
+  Widget _buildGeofencesList(
+    List<dynamic> geofences,
+    GeofencingManager manager,
+  ) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(20),
+      itemCount: geofences.length,
+      itemBuilder: (context, index) {
+        final gf = geofences[index];
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(20),
+            leading: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFA62B).withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.favorite_rounded,
+                color: Color(0xFFFFA62B),
+                size: 24,
+              ),
+            ),
+            title: Text(
+              gf.id,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Raggio: ${gf.radius.first.length.toStringAsFixed(0)}m\n${gf.latitude.toStringAsFixed(4)}, ${gf.longitude.toStringAsFixed(4)}',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+            trailing: IconButton(
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                color: Colors.grey,
+              ),
+              onPressed: () => _deleteGeofence(context, gf.id, manager),
+            ),
+          ),
+        );
+      },
     );
-
-    _nameController.clear();
-    _radiusController.text = '200';
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Luogo aggiunto con successo')),
-      );
-    }
   }
 
-  Future<void> _deleteGeofence(
+  Widget _buildGeofencesMap(List<dynamic> geofences) {
+    final markers = geofences.map((gf) {
+      return Marker(
+        markerId: MarkerId(gf.id),
+        position: LatLng(gf.latitude, gf.longitude),
+        infoWindow: InfoWindow(title: gf.id),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+      );
+    }).toSet();
+
+    final circles = geofences.map((gf) {
+      return Circle(
+        circleId: CircleId(gf.id),
+        center: LatLng(gf.latitude, gf.longitude),
+        radius: gf.radius.first.length.toDouble(),
+        fillColor: const Color(0xFFFFA62B).withOpacity(0.2),
+        strokeWidth: 1,
+        strokeColor: const Color(0xFFFFA62B),
+      );
+    }).toSet();
+
+    return GoogleMap(
+      initialCameraPosition: const CameraPosition(
+        target: LatLng(41.9028, 12.4964), // Default su Roma
+        zoom: 5,
+      ),
+      myLocationEnabled: true,
+      myLocationButtonEnabled: true,
+      markers: markers,
+      circles: circles,
+      onMapCreated: (controller) {
+        _mapController = controller;
+        if (geofences.isNotEmpty) {
+          // Fit bounds to show all geofences
+          _fitBounds(geofences);
+        }
+      },
+      gestureRecognizers: {
+        Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
+      },
+    );
+  }
+
+  void _fitBounds(List<dynamic> geofences) {
+    if (geofences.isEmpty) return;
+    double minLat = geofences.first.latitude;
+    double maxLat = geofences.first.latitude;
+    double minLng = geofences.first.longitude;
+    double maxLng = geofences.first.longitude;
+
+    for (var gf in geofences) {
+      if (gf.latitude < minLat) minLat = gf.latitude;
+      if (gf.latitude > maxLat) maxLat = gf.latitude;
+      if (gf.longitude < minLng) minLng = gf.longitude;
+      if (gf.longitude > maxLng) maxLng = gf.longitude;
+    }
+
+    _mapController?.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        50, // padding
+      ),
+    );
+  }
+
+  void _showAddGeofenceSheet(GeofencingManager manager) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => AddGeofenceSheet(manager: manager),
+    );
+  }
+
+  void _deleteGeofence(
     BuildContext context,
     String id,
     GeofencingManager manager,
@@ -174,8 +245,8 @@ class _GeofencesPageState extends State<GeofencesPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Elimina Luogo'),
-        content: const Text('Sei sicuro di voler eliminare questo luogo?'),
+        title: const Text('Elimina'),
+        content: const Text('Rimuovere questo luogo dai tuoi preferiti?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -183,6 +254,10 @@ class _GeofencesPageState extends State<GeofencesPage> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade400,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Elimina'),
           ),
         ],
@@ -191,12 +266,6 @@ class _GeofencesPageState extends State<GeofencesPage> {
 
     if (confirmed == true) {
       await manager.removeGeofence(id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Luogo eliminato')),
-        );
-      }
     }
   }
 }
-

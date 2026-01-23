@@ -29,13 +29,15 @@ class TripAdapter extends TypeAdapter<Trip> {
       totalDistance: fields[7] as double,
       isActive: fields[8] as bool,
       tripType: fields[9] as TripType,
+      folderId: fields[10] as String?,
+      coverPath: fields[11] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Trip obj) {
     writer
-      ..writeByte(10)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -55,7 +57,11 @@ class TripAdapter extends TypeAdapter<Trip> {
       ..writeByte(8)
       ..write(obj.isActive)
       ..writeByte(9)
-      ..write(obj.tripType);
+      ..write(obj.tripType)
+      ..writeByte(10)
+      ..write(obj.folderId)
+      ..writeByte(11)
+      ..write(obj.coverPath);
   }
 
   @override
@@ -65,6 +71,50 @@ class TripAdapter extends TypeAdapter<Trip> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is TripAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class TripTypeAdapter extends TypeAdapter<TripType> {
+  @override
+  final int typeId = 3;
+
+  @override
+  TripType read(BinaryReader reader) {
+    switch (reader.readByte()) {
+      case 0:
+        return TripType.localTrip;
+      case 1:
+        return TripType.dayTrip;
+      case 2:
+        return TripType.multiDayTrip;
+      default:
+        return TripType.localTrip;
+    }
+  }
+
+  @override
+  void write(BinaryWriter writer, TripType obj) {
+    switch (obj) {
+      case TripType.localTrip:
+        writer.writeByte(0);
+        break;
+      case TripType.dayTrip:
+        writer.writeByte(1);
+        break;
+      case TripType.multiDayTrip:
+        writer.writeByte(2);
+        break;
+    }
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TripTypeAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }

@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.untiled"
+    namespace = "com.example.thememorylane"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -21,7 +21,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.untiled"
+        applicationId = "com.example.thememorylane"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

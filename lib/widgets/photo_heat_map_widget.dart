@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import '../models/moment.dart';
 import '../models/trip.dart';
 
 class PhotoHeatMapWidget extends StatefulWidget {
   final Trip trip;
-
-  const PhotoHeatMapWidget({required this.trip, super.key});
+  final Function(Moment)? onMomentSelected;
+  const PhotoHeatMapWidget({
+    required this.trip,
+    this.onMomentSelected,
+    super.key,
+  });
 
   @override
   State<PhotoHeatMapWidget> createState() => _PhotoHeatMapWidgetState();
@@ -24,255 +30,278 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
     _initializeMapData();
   }
 
+  @override
+  void didUpdateWidget(covariant PhotoHeatMapWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.trip.gpsTrack.length != widget.trip.gpsTrack.length ||
+        oldWidget.trip.moments.length != widget.trip.moments.length) {
+      _initializeMapData();
+    }
+  }
+
   void _initializeMapData() {
-    // Crea markers per le foto
-    final photoMoments = widget.trip.moments
-        .where((m) => m.type == MomentType.photo && m.latitude != null && m.longitude != null)
+    final contentMoments = widget.trip.moments
+        .where((m) => m.latitude != null && m.latitude != 0.0)
         .toList();
 
-    // Calcola la densità di foto per ogni punto
-    final densityMap = _calculatePhotoDensity(photoMoments);
+    // Ottimizzazione: Riduciamo il carico limitando i punti processati per la mappa di calore
+    final densityMap = _calculateDensity(contentMoments.take(50).toList());
+    final maxDensity = densityMap.isEmpty
+        ? 1
+        : densityMap.values.reduce((a, b) => a > b ? a : b);
 
-    // Crea cerchi per la heatmap
     _heatCircles = densityMap.entries.map((entry) {
-      final location = entry.key;
-      final density = entry.value;
-
-      // Colore basato sulla densità (da giallo a rosso)
-      final color = _getHeatColor(density, densityMap.values.reduce((a, b) => a > b ? a : b));
-
+      final color = _getHeatColor(entry.value, maxDensity);
       return Circle(
-        circleId: CircleId('heat_${location.latitude}_${location.longitude}'),
-        center: location,
-        radius: 100 + (density * 50), // Raggio proporzionale alla densità
+        circleId: CircleId('heat_${entry.key.latitude}_${entry.key.longitude}'),
+        center: entry.key,
+        radius: 80 + (entry.value * 20),
         fillColor: color.withOpacity(0.3),
-        strokeColor: color,
-        strokeWidth: 2,
+        strokeWidth: 0, // Rimuoviamo il bordo per risparmiare fill-rate GPU
       );
     }).toSet();
 
-    // Crea markers per i momenti foto
-    _markers = photoMoments.asMap().entries.map((entry) {
-      final index = entry.key;
+    _markers = contentMoments.asMap().entries.map((entry) {
       final moment = entry.value;
+      double hue;
+      String typeLabel;
+
+      switch (moment.type) {
+        case MomentType.photo:
+          hue = BitmapDescriptor.hueAzure;
+          typeLabel = 'Foto';
+          break;
+        case MomentType.video:
+          hue = BitmapDescriptor.hueRed;
+          typeLabel = 'Video';
+          break;
+        case MomentType.audio:
+          hue = BitmapDescriptor.hueCyan;
+          typeLabel = 'Audio';
+          break;
+        case MomentType.note:
+          hue = BitmapDescriptor.hueOrange;
+          typeLabel = 'Nota';
+          break;
+        default:
+          hue = BitmapDescriptor.hueViolet;
+          typeLabel = 'Momento';
+      }
 
       return Marker(
-        markerId: MarkerId('photo_$index'),
+        markerId: MarkerId('moment_${moment.id ?? entry.key}'),
         position: LatLng(moment.latitude!, moment.longitude!),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+        icon: BitmapDescriptor.defaultMarkerWithHue(hue),
+        onTap: () {
+          if (widget.onMomentSelected != null) {
+            widget.onMomentSelected!(moment);
+          }
+        },
         infoWindow: InfoWindow(
-          title: moment.title ?? 'Foto',
-          snippet: moment.description ?? 'Momento fotografico',
+          title: typeLabel,
+          snippet:
+              moment.title ??
+              (moment.type == MomentType.note ? moment.content : ''),
+          onTap: () {
+            if (widget.onMomentSelected != null) {
+              widget.onMomentSelected!(moment);
+            }
+          },
         ),
       );
     }).toSet();
 
-    // Crea polyline per il tracciato GPS
     if (widget.trip.gpsTrack.isNotEmpty) {
       _polylines = {
         Polyline(
           polylineId: const PolylineId('trip_track'),
-          points: widget.trip.gpsTrack
-              .map((coord) => LatLng(coord[0], coord[1]))
-              .toList(),
-          color: Colors.blue,
-          width: 3,
+          points: widget.trip.gpsTrack.map((c) => LatLng(c[0], c[1])).toList(),
+          color: const Color(0xFF16697A),
+          width: 5,
+          jointType: JointType.round,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
         ),
       };
     }
-
-    setState(() {});
   }
 
-  Map<LatLng, int> _calculatePhotoDensity(List<Moment> photoMoments) {
-    final Map<LatLng, int> densityMap = {};
-
-    for (var moment in photoMoments) {
-      if (moment.latitude == null || moment.longitude == null) continue;
-
-      final location = LatLng(moment.latitude!, moment.longitude!);
-
-      // Raggruppa foto vicine (entro ~100m)
-      bool foundNearby = false;
-      for (var key in densityMap.keys) {
-        if (_isNearby(key, location, 0.001)) { // ~100m
-          densityMap[key] = (densityMap[key] ?? 0) + 1;
-          foundNearby = true;
+  Map<LatLng, int> _calculateDensity(List<Moment> moments) {
+    final density = <LatLng, int>{};
+    for (var m in moments) {
+      final loc = LatLng(m.latitude!, m.longitude!);
+      bool found = false;
+      for (var k in density.keys) {
+        if ((k.latitude - loc.latitude).abs() < 0.0008 &&
+            (k.longitude - loc.longitude).abs() < 0.0008) {
+          density[k] = (density[k] ?? 0) + 1;
+          found = true;
           break;
         }
       }
-
-      if (!foundNearby) {
-        densityMap[location] = 1;
-      }
+      if (!found) density[loc] = 1;
     }
-
-    return densityMap;
+    return density;
   }
 
-  bool _isNearby(LatLng point1, LatLng point2, double threshold) {
-    final latDiff = (point1.latitude - point2.latitude).abs();
-    final lngDiff = (point1.longitude - point2.longitude).abs();
-    return latDiff < threshold && lngDiff < threshold;
-  }
-
-  Color _getHeatColor(int density, int maxDensity) {
-    if (maxDensity == 0) return Colors.yellow;
-
-    final ratio = density / maxDensity;
-
-    if (ratio < 0.3) {
-      return Colors.yellow;
-    } else if (ratio < 0.6) {
-      return Colors.orange;
-    } else {
-      return Colors.red;
-    }
-  }
-
-  LatLng _getInitialPosition() {
-    if (widget.trip.gpsTrack.isNotEmpty) {
-      final firstPoint = widget.trip.gpsTrack.first;
-      return LatLng(firstPoint[0], firstPoint[1]);
-    }
-
-    final photoMoments = widget.trip.moments
-        .where((m) => m.type == MomentType.photo && m.latitude != null)
-        .toList();
-
-    if (photoMoments.isNotEmpty) {
-      return LatLng(photoMoments.first.latitude!, photoMoments.first.longitude!);
-    }
-
-    // Default: Roma
-    return const LatLng(41.9028, 12.4964);
+  Color _getHeatColor(int d, int max) {
+    final r = d / max;
+    if (r < 0.3) return const Color(0xFFFCD34D); // Yellow
+    if (r < 0.7) return const Color(0xFFF59E0B); // Orange
+    return const Color(0xFFEF4444); // Red
   }
 
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        _buildTopOverlay(),
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: GoogleMap(
+                initialCameraPosition: CameraPosition(
+                  target: _getInitialPos(),
+                  zoom: 12,
+                ),
+                markers: _markers,
+                polylines: _polylines,
+                circles: _heatCircles,
+                onMapCreated: (c) {
+                  _mapController = c;
+                  _fit();
+                },
+                myLocationEnabled: true,
+                zoomGesturesEnabled: true,
+                scrollGesturesEnabled: true,
+                tiltGesturesEnabled: true,
+                rotateGesturesEnabled: true,
+                zoomControlsEnabled:
+                    true, // Aggiungiamo controlli espliciti per comodità
+                mapToolbarEnabled: false,
+                gestureRecognizers: {
+                  Factory<OneSequenceGestureRecognizer>(
+                    () => EagerGestureRecognizer(),
+                  ),
+                },
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTopOverlay() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              const Text(
-                'Photo Heat Map',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              const Icon(Icons.hub_rounded, color: Color(0xFF16697A)),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Punti di Interesse',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleLarge?.copyWith(fontSize: 18),
+                  ),
+                  const Text(
+                    'Aree con maggiore intensità di ricordi',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Le aree più "calde" indicano dove hai scattato più foto',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              const SizedBox(height: 12),
-              _buildLegend(),
             ],
           ),
-        ),
-        SizedBox(
-          height: 400,
-          child: GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: _getInitialPosition(),
-              zoom: 13,
-            ),
-            markers: _markers,
-            polylines: _polylines,
-            circles: _heatCircles,
-            onMapCreated: (controller) {
-              _mapController = controller;
-              _fitMapToBounds();
-            },
-            myLocationButtonEnabled: true,
-            myLocationEnabled: true,
-            mapType: MapType.normal,
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _legend(const Color(0xFFEF4444), 'Hot'),
+              const SizedBox(width: 12),
+              _legend(const Color(0xFFF59E0B), 'Warm'),
+              const SizedBox(width: 12),
+              _legend(const Color(0xFFFCD34D), 'Cool'),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _fit,
+                icon: const Icon(Icons.center_focus_strong, size: 16),
+                label: const Text('Ricentra', style: TextStyle(fontSize: 12)),
+              ),
+            ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildLegend() {
-    return Row(
-      children: [
-        _buildLegendItem(Colors.yellow, 'Bassa densità'),
-        const SizedBox(width: 16),
-        _buildLegendItem(Colors.orange, 'Media densità'),
-        const SizedBox(width: 16),
-        _buildLegendItem(Colors.red, 'Alta densità'),
-      ],
-    );
-  }
-
-  Widget _buildLegendItem(Color color, String label) {
+  Widget _legend(Color c, String l) {
     return Row(
       children: [
         Container(
-          width: 16,
-          height: 16,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.3),
-            border: Border.all(color: color, width: 2),
-            shape: BoxShape.circle,
-          ),
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: c, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: 6),
         Text(
-          label,
-          style: const TextStyle(fontSize: 11),
+          l,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey,
+          ),
         ),
       ],
     );
   }
 
-  void _fitMapToBounds() {
-    if (_mapController == null) return;
-
-    final allPoints = <LatLng>[];
-
-    // Aggiungi punti GPS
-    for (var coord in widget.trip.gpsTrack) {
-      allPoints.add(LatLng(coord[0], coord[1]));
-    }
-
-    // Aggiungi punti foto
-    for (var moment in widget.trip.moments) {
-      if (moment.latitude != null && moment.longitude != null) {
-        allPoints.add(LatLng(moment.latitude!, moment.longitude!));
-      }
-    }
-
-    if (allPoints.isEmpty) return;
-
-    // Calcola bounds
-    double minLat = allPoints.first.latitude;
-    double maxLat = allPoints.first.latitude;
-    double minLng = allPoints.first.longitude;
-    double maxLng = allPoints.first.longitude;
-
-    for (var point in allPoints) {
-      if (point.latitude < minLat) minLat = point.latitude;
-      if (point.latitude > maxLat) maxLat = point.latitude;
-      if (point.longitude < minLng) minLng = point.longitude;
-      if (point.longitude > maxLng) maxLng = point.longitude;
-    }
-
-    final bounds = LatLngBounds(
-      southwest: LatLng(minLat, minLng),
-      northeast: LatLng(maxLat, maxLng),
-    );
-
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 50),
-    );
+  LatLng _getInitialPos() {
+    if (widget.trip.gpsTrack.isNotEmpty)
+      return LatLng(
+        widget.trip.gpsTrack.first[0],
+        widget.trip.gpsTrack.first[1],
+      );
+    return const LatLng(41.9028, 12.4964);
   }
 
-  @override
-  void dispose() {
-    _mapController?.dispose();
-    super.dispose();
+  void _fit() {
+    if (_mapController == null) return;
+    final points = <LatLng>[];
+    for (var c in widget.trip.gpsTrack) points.add(LatLng(c[0], c[1]));
+    for (var m in widget.trip.moments)
+      if (m.latitude != null && m.latitude != 0.0)
+        points.add(LatLng(m.latitude!, m.longitude!));
+    if (points.isEmpty) return;
+
+    double minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+    for (var p in points) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        50,
+      ),
+    );
   }
 }

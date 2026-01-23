@@ -2,7 +2,17 @@ import 'package:hive/hive.dart';
 
 part 'moment.g.dart';
 
-enum MomentType { note, photo, audio }
+@HiveType(typeId: 2)
+enum MomentType {
+  @HiveField(0)
+  note,
+  @HiveField(1)
+  photo,
+  @HiveField(2)
+  audio,
+  @HiveField(3)
+  video,
+}
 
 @HiveType(typeId: 1)
 class Moment {
@@ -73,4 +83,3 @@ class Moment {
     };
   }
 }
-

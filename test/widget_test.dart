@@ -1,10 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geofence_service/geofence_service.dart';
-import 'package:untiled/main.dart';
-import 'package:untiled/models/trip.dart';
-import 'package:untiled/models/moment.dart';
-import 'package:untiled/services/database_service.dart';
-import 'package:untiled/services/geofencing_manager.dart';
+import 'package:the_memory_lane/main.dart';
+import 'package:the_memory_lane/models/trip.dart';
+import 'package:the_memory_lane/models/moment.dart';
+import 'package:the_memory_lane/services/database_service.dart';
+import 'package:the_memory_lane/services/geofencing_manager.dart';
+
+import 'package:the_memory_lane/models/trip_folder.dart';
 
 // Mock implementations that do nothing.
 class MockDatabaseService implements DatabaseService {
@@ -39,6 +41,15 @@ class MockDatabaseService implements DatabaseService {
 
   @override
   List<Moment> getMomentsByTrip(String tripId) => [];
+
+  @override
+  Future<void> deleteFolder(String folderId) async {}
+
+  @override
+  List<TripFolder> getAllFolders() => [];
+
+  @override
+  Future<void> saveFolder(TripFolder folder) async {}
 }
 
 class MockGeofenceService implements GeofencingManager {
@@ -54,12 +65,14 @@ class MockGeofenceService implements GeofencingManager {
     required double longitude,
     required double radiusInMeter,
   }) async {
-    _geofences.add(Geofence(
-      id: id,
-      latitude: latitude,
-      longitude: longitude,
-      radius: [GeofenceRadius(id: id, length: radiusInMeter)],
-    ));
+    _geofences.add(
+      Geofence(
+        id: id,
+        latitude: latitude,
+        longitude: longitude,
+        radius: [GeofenceRadius(id: id, length: radiusInMeter)],
+      ),
+    );
   }
 
   @override
@@ -86,19 +99,22 @@ class MockGeofenceService implements GeofencingManager {
 }
 
 void main() {
-  testWidgets('App starts and shows welcome message', (WidgetTester tester) async {
+  testWidgets('App starts and shows welcome message', (
+    WidgetTester tester,
+  ) async {
     // Provide mock services.
     final mockDatabaseService = MockDatabaseService();
     final mockGeofenceService = MockGeofenceService();
 
     // Build our app and trigger a frame.
-    await tester.pumpWidget(MyApp(
-      databaseService: mockDatabaseService,
-      geofenceService: mockGeofenceService,
-    ));
+    await tester.pumpWidget(
+      MyApp(
+        databaseService: mockDatabaseService,
+        geofenceService: mockGeofenceService,
+      ),
+    );
 
     // Verify that the app shows the initial message.
-    expect(find.text('No trips yet. Start your first one!'), findsOneWidget);
+    expect(find.text('La tua avventura inizia ora'), findsOneWidget);
   });
 }
-

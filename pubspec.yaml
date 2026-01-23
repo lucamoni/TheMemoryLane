@@ -1,4 +1,4 @@
-name: untiled
+name: the_memory_lane
 description: "The Memory Lane Journalist - Track your journeys with memories"
 publish_to: 'none'
 
@@ -17,11 +17,20 @@ dependencies:
   location: ^5.0.1
   image_picker: ^1.0.4
   google_maps_flutter: ^2.5.0
+  google_maps_flutter_android: ^2.10.0
   intl: ^0.19.0
   provider: ^6.1.0
   flutter_local_notifications: ^19.5.0
   geofence_service: ^6.0.0+1
+  geocoding: ^2.1.0
   uuid: ^4.0.0
+  speech_to_text: ^7.3.0
+  permission_handler: ^11.3.1
+  record: ^6.1.2
+  audioplayers: ^6.1.0
+  video_player: ^2.8.2
+  path_provider: ^2.1.2
+  path: ^1.9.0
 
 dev_dependencies:
   flutter_test:
@@ -29,6 +38,24 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   build_runner: ^2.4.0
   hive_generator: ^2.0.0
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.0
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "/Users/lucamoni/Documents/UNIBO/LAM/TheMemoryLane/TheMemoryLane 512.png"
+  min_sdk_android: 21
+
+flutter_native_splash:
+  color: "#16697A"
+  image: "/Users/lucamoni/Documents/UNIBO/LAM/TheMemoryLane/TheMemoryLane 512.png"
+  android: true
+  ios: true
+  fullscreen: true
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/logo/logo_192.png
+    - assets/logo/logo_512.png

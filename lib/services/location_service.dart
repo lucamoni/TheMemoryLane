@@ -16,6 +16,13 @@ class LocationService {
   List<List<double>> get gpsTrack => _gpsTrack;
 
   Future<bool> requestLocationPermission() async {
+    // Configura il modulo GPS per maggiore efficienza hardware
+    await _location.changeSettings(
+      accuracy: LocationAccuracy.high,
+      interval: 5000, // Ogni 5 secondi (invece che continuo)
+      distanceFilter: 15, // Ogni 15 metri
+    );
+
     final hasPermission = await _location.hasPermission();
     if (hasPermission == PermissionStatus.denied) {
       final permissionStatus = await _location.requestPermission();
@@ -31,12 +38,35 @@ class LocationService {
     }
 
     _isTracking = true;
-    _gpsTrack = [];
+    // Non azzeriamo il track se vogliamo riprendere quello esistente
+    // _gpsTrack = [];
 
-    // Monitora le posizioni
+    // Monitora le posizioni con filtro di distanza per efficienza
     _location.onLocationChanged.listen((LocationData currentLocation) {
-      if (_isTracking && currentLocation.latitude != null && currentLocation.longitude != null) {
-        _gpsTrack.add([currentLocation.latitude!, currentLocation.longitude!]);
+      if (_isTracking &&
+          currentLocation.latitude != null &&
+          currentLocation.longitude != null) {
+        if (_gpsTrack.isEmpty) {
+          _gpsTrack.add([
+            currentLocation.latitude!,
+            currentLocation.longitude!,
+          ]);
+        } else {
+          final last = _gpsTrack.last;
+          final dist = calculateDistance(
+            last[0],
+            last[1],
+            currentLocation.latitude!,
+            currentLocation.longitude!,
+          );
+          // Aggiungi punto solo se ci si è mossi di almeno 10 metri
+          if (dist > 0.01) {
+            _gpsTrack.add([
+              currentLocation.latitude!,
+              currentLocation.longitude!,
+            ]);
+          }
+        }
       }
     });
   }
@@ -66,12 +96,17 @@ class LocationService {
     _gpsTrack = [];
   }
 
+  void setInitialTrack(List<List<double>> track) {
+    _gpsTrack = List.from(track);
+  }
+
   double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
     const double earthRadiusKm = 6371;
     final double dLat = _toRadians(lat2 - lat1);
     final double dLon = _toRadians(lon2 - lon1);
 
-    final double a = (math.sin(dLat / 2) * math.sin(dLat / 2)) +
+    final double a =
+        (math.sin(dLat / 2) * math.sin(dLat / 2)) +
         (math.cos(_toRadians(lat1)) *
             math.cos(_toRadians(lat2)) *
             math.sin(dLon / 2) *
@@ -100,4 +135,3 @@ class LocationService {
     return total;
   }
 }
-

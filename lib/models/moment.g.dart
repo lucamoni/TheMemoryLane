@@ -63,3 +63,52 @@ class MomentAdapter extends TypeAdapter<Moment> {
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }
+
+class MomentTypeAdapter extends TypeAdapter<MomentType> {
+  @override
+  final int typeId = 2;
+
+  @override
+  MomentType read(BinaryReader reader) {
+    switch (reader.readByte()) {
+      case 0:
+        return MomentType.note;
+      case 1:
+        return MomentType.photo;
+      case 2:
+        return MomentType.audio;
+      case 3:
+        return MomentType.video;
+      default:
+        return MomentType.note;
+    }
+  }
+
+  @override
+  void write(BinaryWriter writer, MomentType obj) {
+    switch (obj) {
+      case MomentType.note:
+        writer.writeByte(0);
+        break;
+      case MomentType.photo:
+        writer.writeByte(1);
+        break;
+      case MomentType.audio:
+        writer.writeByte(2);
+        break;
+      case MomentType.video:
+        writer.writeByte(3);
+        break;
+    }
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MomentTypeAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}

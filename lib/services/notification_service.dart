@@ -12,7 +12,7 @@ class NotificationService {
 
   Future<void> init() async {
     const AndroidInitializationSettings androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('@mipmap/launcher_icon');
     const DarwinInitializationSettings iOSSettings =
         DarwinInitializationSettings();
 
@@ -31,12 +31,12 @@ class NotificationService {
   }) async {
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
-      'geofence_notifications',
-      'Notifiche Geofence',
-      channelDescription: 'Notifiche quando entri in aree geofenced',
-      importance: Importance.max,
-      priority: Priority.high,
-    );
+          'geofence_notifications',
+          'Notifiche Geofence',
+          channelDescription: 'Notifiche quando entri in aree geofenced',
+          importance: Importance.max,
+          priority: Priority.high,
+        );
 
     const DarwinNotificationDetails iOSDetails = DarwinNotificationDetails();
 
@@ -62,4 +62,3 @@ class NotificationService {
     await _notificationsPlugin.cancelAll();
   }
 }
-

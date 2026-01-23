@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:location/location.dart';
 import 'database_service.dart';
 import 'location_service.dart';
@@ -5,49 +6,65 @@ import 'geofencing_manager.dart';
 import 'notification_service.dart';
 
 class MissingMemoryService {
-  static final MissingMemoryService _instance = MissingMemoryService._internal();
+  static final MissingMemoryService _instance =
+      MissingMemoryService._internal();
 
   static MissingMemoryService get instance => _instance;
 
   MissingMemoryService._internal();
 
   LocationData? _lastKnownLocation;
-  DateTime? _lastMovementCheck;
   static const double _movementThresholdKm = 0.5; // 500 metri
 
   Future<void> checkMissingMemories() async {
     try {
-      final currentLocation = await LocationService.instance.getCurrentLocation();
+      final loc = LocationService.instance;
+      final currentLocation = await loc.getCurrentLocation();
       if (currentLocation == null) return;
 
-      final trips = DatabaseService.instance.getAllTrips();
+      final lat = currentLocation.latitude!;
+      final lon = currentLocation.longitude!;
 
-      for (var trip in trips) {
-        for (var geofence in GeofencingManager.instance.getGeofences()) {
-          final distance = LocationService.instance.calculateDistance(
-            currentLocation.latitude!,
-            currentLocation.longitude!,
-            double.parse(geofence.latitude.toString()),
-            double.parse(geofence.longitude.toString()),
-          );
+      final activeTrips = DatabaseService.instance
+          .getAllTrips()
+          .where((t) => t.isActive)
+          .toList();
+      if (activeTrips.isEmpty) return;
 
-          // Se siamo a 200m da un geofence
-          if (distance < 0.2) {
-            // Verifica se ci sono momenti salvati qui
-            final nearbyMoments = trip.moments.where((m) {
-              final mDistance = LocationService.instance.calculateDistance(
-                m.latitude ?? 0.0,
-                m.longitude ?? 0.0,
-                double.parse(geofence.latitude.toString()),
-                double.parse(geofence.longitude.toString()),
-              );
-              return mDistance < 0.2;
-            }).toList();
+      final geofences = GeofencingManager.instance.getGeofences();
+      if (geofences.isEmpty) return;
 
-            if (nearbyMoments.isNotEmpty) {
+      for (var geofence in geofences) {
+        final distance = loc.calculateDistance(
+          lat,
+          lon,
+          geofence.latitude,
+          geofence.longitude,
+        );
+
+        // Se siamo a 200m da un geofence
+        if (distance < 0.2) {
+          for (var trip in activeTrips) {
+            // Verifica se ci sono momenti salvati qui (perimetro di 200m)
+            final hasNearbyMoment = trip.moments.any((m) {
+              final mLat = m.latitude;
+              final mLng = m.longitude;
+              if (mLat == null || mLng == null) return false;
+
+              return loc.calculateDistance(
+                    mLat,
+                    mLng,
+                    geofence.latitude,
+                    geofence.longitude,
+                  ) <
+                  0.2;
+            });
+
+            if (!hasNearbyMoment) {
               NotificationService.instance.showNotification(
-                title: 'Ricordo Mancante!',
-                body: 'Sei tornato qui! Hai nuovi ricordi da condividere?',
+                title: 'Nuovo Ricordo?',
+                body:
+                    'Sei tornato in un tuo Luogo del Cuore! Vuoi aggiungere un nuovo ricordo?',
                 payload: trip.id,
               );
             }
@@ -55,14 +72,15 @@ class MissingMemoryService {
         }
       }
     } catch (e) {
-      // Errore nel controllo dei missing memories
+      debugPrint('Error checking missing memories: $e');
     }
   }
 
   /// Rileva movimento significativo e suggerisce di iniziare un nuovo viaggio
   Future<void> checkForMovement() async {
     try {
-      final currentLocation = await LocationService.instance.getCurrentLocation();
+      final currentLocation = await LocationService.instance
+          .getCurrentLocation();
       if (currentLocation == null ||
           currentLocation.latitude == null ||
           currentLocation.longitude == null) {
@@ -72,7 +90,6 @@ class MissingMemoryService {
       // Prima volta che controlliamo
       if (_lastKnownLocation == null) {
         _lastKnownLocation = currentLocation;
-        _lastMovementCheck = DateTime.now();
         return;
       }
 
@@ -94,14 +111,14 @@ class MissingMemoryService {
           // Suggerisci di iniziare un nuovo viaggio
           await NotificationService.instance.showNotification(
             title: '🚀 Nuovo Viaggio?',
-            body: 'Sembra che tu ti stia muovendo! Vuoi iniziare a registrare un nuovo viaggio?',
+            body:
+                'Sembra che tu ti stia muovendo! Vuoi iniziare a registrare un nuovo viaggio?',
             payload: 'start_new_trip',
           );
         }
 
         // Aggiorna la posizione
         _lastKnownLocation = currentLocation;
-        _lastMovementCheck = DateTime.now();
       }
     } catch (e) {
       // Errore nel controllo del movimento
@@ -111,7 +128,5 @@ class MissingMemoryService {
   /// Resetta il tracking del movimento
   void resetMovementTracking() {
     _lastKnownLocation = null;
-    _lastMovementCheck = null;
   }
 }
-

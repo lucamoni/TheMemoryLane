@@ -3,10 +3,14 @@ import 'moment.dart';
 
 part 'trip.g.dart';
 
+@HiveType(typeId: 3)
 enum TripType {
-  localTrip,    // Brevi spostamenti, passeggiate
-  dayTrip,      // Gite di un giorno
-  multiDayTrip  // Vacanze di più giorni
+  @HiveField(0)
+  localTrip, // Brevi spostamenti, passeggiate
+  @HiveField(1)
+  dayTrip, // Gite di un giorno
+  @HiveField(2)
+  multiDayTrip, // Vacanze di più giorni
 }
 
 @HiveType(typeId: 0)
@@ -41,6 +45,12 @@ class Trip {
   @HiveField(9)
   final TripType tripType;
 
+  @HiveField(10)
+  final String? folderId;
+
+  @HiveField(11)
+  final String? coverPath;
+
   Trip({
     required this.id,
     required this.title,
@@ -52,8 +62,10 @@ class Trip {
     this.totalDistance = 0.0,
     this.isActive = true,
     this.tripType = TripType.dayTrip,
-  })  : moments = moments ?? [],
-        gpsTrack = gpsTrack ?? [];
+    this.folderId,
+    this.coverPath,
+  }) : moments = moments ?? [],
+       gpsTrack = gpsTrack ?? [];
 
   factory Trip.fromJson(Map<String, dynamic> json) {
     return Trip(
@@ -62,17 +74,21 @@ class Trip {
       description: json['description'],
       startDate: DateTime.parse(json['startDate']),
       endDate: json['endDate'] != null ? DateTime.parse(json['endDate']) : null,
-      moments: (json['moments'] as List?)
+      moments:
+          (json['moments'] as List?)
               ?.map((m) => Moment.fromJson(m as Map<String, dynamic>))
               .toList() ??
           [],
-      gpsTrack: (json['gpsTrack'] as List?)
+      gpsTrack:
+          (json['gpsTrack'] as List?)
               ?.map((track) => List<double>.from(track as List))
               .toList() ??
           [],
       totalDistance: json['totalDistance'] ?? 0.0,
       isActive: json['isActive'] ?? true,
       tripType: TripType.values[json['tripType'] ?? 1],
+      folderId: json['folderId'],
+      coverPath: json['coverPath'],
     );
   }
 
@@ -88,6 +104,8 @@ class Trip {
       'totalDistance': totalDistance,
       'isActive': isActive,
       'tripType': tripType.index,
+      'folderId': folderId,
+      'coverPath': coverPath,
     };
   }
 
@@ -102,6 +120,8 @@ class Trip {
     double? totalDistance,
     bool? isActive,
     TripType? tripType,
+    String? folderId,
+    String? coverPath,
   }) {
     return Trip(
       id: id ?? this.id,
@@ -114,7 +134,8 @@ class Trip {
       totalDistance: totalDistance ?? this.totalDistance,
       isActive: isActive ?? this.isActive,
       tripType: tripType ?? this.tripType,
+      folderId: folderId ?? this.folderId,
+      coverPath: coverPath ?? this.coverPath,
     );
   }
 }
-

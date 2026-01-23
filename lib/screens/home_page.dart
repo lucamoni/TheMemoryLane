@@ -1,12 +1,18 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/trip.dart';
+import '../models/moment.dart';
 import '../models/no_travel_period.dart';
 import '../services/database_service.dart';
 import '../widgets/add_trip_dialog.dart';
 import 'trip_detail_page.dart';
 import 'geofences_page.dart';
+import 'package:intl/intl.dart';
+
+import '../models/trip_folder.dart';
+import 'package:uuid/uuid.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -16,144 +22,733 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  String? _selectedFolderId;
+
   @override
   Widget build(BuildContext context) {
     final dbService = Provider.of<DatabaseService>(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('The Memory Lane Journalist'),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.location_on),
-            tooltip: 'Luoghi del Cuore',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const GeofencesPage(),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: _buildAppBar(context),
       body: ValueListenableBuilder(
         valueListenable: Hive.box<Trip>('trips').listenable(),
-        builder: (context, Box<Trip> box, _) {
-          final trips = box.values.toList();
+        builder: (context, Box<Trip> tripBox, _) {
+          return ValueListenableBuilder(
+            valueListenable: Hive.box<TripFolder>('folders').listenable(),
+            builder: (context, Box<TripFolder> folderBox, _) {
+              final allTrips = tripBox.values.toList();
+              final folders = folderBox.values.toList();
 
-          if (trips.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.location_on,
-                    size: 64,
-                    color: Colors.grey,
+              if (allTrips.isEmpty && folders.isEmpty)
+                return _buildEmptyState();
+
+              // Ottimizzazione: Usiamo dati pre-filtrati e ordinati
+              final filteredTrips = _selectedFolderId == null
+                  ? allTrips
+                  : allTrips
+                        .where((t) => t.folderId == _selectedFolderId)
+                        .toList();
+
+              filteredTrips.sort(
+                (a, b) => (b.startDate ?? DateTime.now()).compareTo(
+                  a.startDate ?? DateTime.now(),
+                ),
+              );
+
+              final activeTrip = filteredTrips
+                  .where((t) => t.isActive)
+                  .firstOrNull;
+              final noTravelPeriods = _calculateNoTravelPeriods(filteredTrips);
+              final timelineItems = _buildTimelineItems(
+                filteredTrips,
+                noTravelPeriods,
+              );
+
+              return CustomScrollView(
+                cacheExtent: 1000, // Migliora la fluidità dello scrolling
+                physics: const BouncingScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _buildFolderBar(folders, dbService),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Nessun viaggio registrato',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 32),
-                  ElevatedButton.icon(
-                    onPressed: _showAddTripDialog,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Inizia un Nuovo Viaggio'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          // Ordina i viaggi per data
-          final sortedTrips = List<Trip>.from(trips)
-            ..sort((a, b) => (a.startDate ?? DateTime.now())
-                .compareTo(b.startDate ?? DateTime.now()));
-
-          // Calcola i periodi di inattività
-          final noTravelPeriods = _calculateNoTravelPeriods(sortedTrips);
-
-          // Combina viaggi e periodi inattivi
-          final timelineItems = _buildTimelineItems(sortedTrips, noTravelPeriods);
-
-          return ListView.builder(
-            itemCount: timelineItems.length,
-            itemBuilder: (context, index) {
-              final item = timelineItems[index];
-
-              if (item is NoTravelPeriod) {
-                return _buildNoTravelPeriodCard(item);
-              } else if (item is Trip) {
-                return Card(
-                  margin: const EdgeInsets.all(8),
-                  child: ListTile(
-                    leading: _getTripTypeIcon(item.tripType),
-                    title: Row(
-                      children: [
-                        Expanded(
-                          child: Text(item.title ?? 'Senza titolo'),
-                        ),
-                        _getTripTypeBadge(item.tripType),
-                      ],
+                  if (activeTrip != null)
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                      sliver: SliverToBoxAdapter(
+                        child: _buildActiveTripCard(activeTrip),
+                      ),
                     ),
-                    subtitle: Text(
-                      'Inizio: ${item.startDate.toString().split('.')[0]}',
+                  SliverPadding(
+                    padding: const EdgeInsets.all(20),
+                    sliver: SliverToBoxAdapter(
+                      child: Text(
+                        _selectedFolderId == null
+                            ? 'Esplorazioni Recenti'
+                            : 'In questa cartella',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
                     ),
-                    trailing: const Icon(Icons.arrow_forward),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => TripDetailPage(trip: item),
-                        ),
-                      );
-                    },
-                    onLongPress: () {
-                      if (item.id != null) {
-                        _showDeleteConfirmation(context, item.id!, dbService);
+                  ),
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final item = timelineItems[index];
+                      if (item is NoTravelPeriod)
+                        return _buildNoTravelPeriodTile(item);
+                      if (item is Trip) {
+                        if (item.isActive &&
+                            index == 0 &&
+                            _selectedFolderId == null)
+                          return const SizedBox.shrink();
+                        return _buildTripCard(
+                          context,
+                          item,
+                          dbService,
+                          folders,
+                        );
                       }
-                    },
+                      return const SizedBox.shrink();
+                    }, childCount: timelineItems.length),
                   ),
-                );
-              }
-
-              return const SizedBox.shrink();
+                  const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                ],
+              );
             },
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddTripDialog,
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add_location_alt_rounded),
+        label: const Text('Nuovo Viaggio'),
+        elevation: 4,
+        backgroundColor: Theme.of(context).primaryColor,
+        foregroundColor: Colors.white,
       ),
+    );
+  }
+
+  Widget _buildFolderBar(List<TripFolder> folders, DatabaseService dbService) {
+    return Container(
+      height: 60,
+      margin: const EdgeInsets.only(top: 20),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: folders.length + 2,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return _buildFolderChip(null, 'Tutti', Icons.all_inclusive_rounded);
+          }
+          if (index == folders.length + 1) {
+            return GestureDetector(
+              onTap: () => _showAddFolderDialog(dbService),
+              child: Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: const Icon(Icons.add_rounded, color: Colors.grey),
+              ),
+            );
+          }
+          final folder = folders[index - 1];
+          return _buildFolderChip(
+            folder.id,
+            folder.name,
+            Icons.folder_rounded,
+            color: Color(folder.color),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFolderChip(
+    String? id,
+    String label,
+    IconData icon, {
+    Color? color,
+  }) {
+    final isSelected = _selectedFolderId == id;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedFolderId = id),
+      onLongPress: id != null ? () => _showFolderOptions(id) : null,
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (color ?? Theme.of(context).primaryColor)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? Colors.transparent : Colors.grey.shade200,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: isSelected ? Colors.white : Colors.grey,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.grey.shade700,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddFolderDialog(DatabaseService dbService) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nuova Cartella'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  hintText: 'Nome della cartella',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annulla'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.isNotEmpty) {
+                dbService.saveFolder(
+                  TripFolder(id: const Uuid().v4(), name: controller.text),
+                );
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Crea'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFolderOptions(String folderId) {
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.delete_rounded, color: Colors.red),
+              title: const Text('Elimina Cartella'),
+              onTap: () {
+                dbService.deleteFolder(folderId);
+                if (_selectedFolderId == folderId)
+                  setState(() => _selectedFolderId = null);
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    return AppBar(
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Image.asset('assets/logo/logo_192.png', height: 32, width: 32),
+          const SizedBox(width: 10),
+          const Text('The Memory Lane'),
+        ],
+      ),
+      centerTitle: false,
+      backgroundColor: Colors.transparent,
+      actions: [
+        Container(
+          margin: const EdgeInsets.only(right: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
+            ],
+          ),
+          child: IconButton(
+            icon: const Icon(Icons.favorite_rounded, color: Color(0xFFFFA62B)),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const GeofencesPage()),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(height: 40),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF16697A).withOpacity(0.05),
+                    blurRadius: 20,
+                  ),
+                ],
+              ),
+              child: Icon(
+                Icons.auto_awesome_rounded,
+                size: 48, // Ridotto leggermente
+                color: Theme.of(context).primaryColor,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Inizia la tua avventura',
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Registra i tuoi viaggi e cattura i momenti migliori della tua giornata.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, height: 1.4, fontSize: 13),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton(
+              onPressed: _showAddTripDialog,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 14,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: const Text('Crea Primo Viaggio'),
+            ),
+            const SizedBox(height: 40),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActiveTripCard(Trip trip) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        image:
+            (trip.coverPath != null ||
+                trip.moments.any((m) => m.type == MomentType.photo))
+            ? DecorationImage(
+                image: FileImage(
+                  File(
+                    trip.coverPath ??
+                        trip.moments
+                            .firstWhere((m) => m.type == MomentType.photo)
+                            .content!,
+                  ),
+                ),
+                fit: BoxFit.cover,
+                colorFilter: ColorFilter.mode(
+                  Colors.black.withOpacity(0.6),
+                  BlendMode.darken,
+                ),
+              )
+            : null,
+        gradient:
+            (trip.coverPath == null &&
+                !trip.moments.any((m) => m.type == MomentType.photo))
+            ? LinearGradient(
+                colors: [
+                  Theme.of(context).primaryColor,
+                  const Color(0xFF1B262C),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).primaryColor.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  children: [
+                    SizedBox(
+                      width: 8,
+                      height: 8,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                        value: null,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'TRACKING ATTIVO',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              _getTripTypeIcon(trip.tripType, invert: true),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Text(
+            trip.title ?? 'Senza Titolo',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Iniziato ${DateFormat('dd MMM, HH:mm').format(trip.startDate ?? DateTime.now())}',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildCompactStat(
+                Icons.route,
+                '${trip.totalDistance.toStringAsFixed(1)} km',
+              ),
+              _buildCompactStat(
+                Icons.camera_alt,
+                '${trip.moments.length} momenti',
+              ),
+              TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => TripDetailPage(trip: trip)),
+                ),
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Theme.of(context).primaryColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Gestisci'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactStat(IconData icon, String value) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.white70, size: 16),
+        const SizedBox(width: 6),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTripCard(
+    BuildContext context,
+    Trip trip,
+    DatabaseService dbService,
+    List<TripFolder> folders,
+  ) {
+    final folder = trip.folderId != null
+        ? folders.where((f) => f.id == trip.folderId).firstOrNull
+        : null;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading:
+            (trip.coverPath != null ||
+                trip.moments.any((m) => m.type == MomentType.photo))
+            ? Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  image: DecorationImage(
+                    image: FileImage(
+                      File(
+                        trip.coverPath ??
+                            trip.moments
+                                .firstWhere((m) => m.type == MomentType.photo)
+                                .content!,
+                      ),
+                    ),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              )
+            : _getTripTypeIcon(trip.tripType),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                trip.title ?? 'Viaggio',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            if (folder != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Color(folder.color).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  folder.name,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Color(folder.color),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(
+              DateFormat(
+                'dd MMMM yyyy',
+              ).format(trip.startDate ?? DateTime.now()),
+              style: const TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(
+                  Icons.route_outlined,
+                  size: 12,
+                  color: Colors.grey.shade400,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${trip.totalDistance.toStringAsFixed(1)} km',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                const SizedBox(width: 12),
+                Icon(
+                  Icons.photo_library_outlined,
+                  size: 12,
+                  color: Colors.grey.shade400,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${trip.moments.length}', // Semplice conteggio, efficiente
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
+        trailing: PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert_rounded, color: Colors.grey),
+          onSelected: (val) {
+            if (val == 'delete') {
+              _showDeleteConfirmation(context, trip.id!, dbService);
+            } else {
+              dbService.saveTrip(
+                trip.copyWith(folderId: val == 'none' ? null : val),
+              );
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'none', child: Text('Nessuna cartella')),
+            ...folders.map(
+              (f) => PopupMenuItem(
+                value: f.id,
+                child: Text('Sposta in ${f.name}'),
+              ),
+            ),
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: 'delete',
+              child: Text('Elimina', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => TripDetailPage(trip: trip)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoTravelPeriodTile(NoTravelPeriod period) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 12,
+            child: VerticalDivider(thickness: 1, color: Colors.grey),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${period.durationInDays} giorni di pausa - ${period.label}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade500,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _getTripTypeIcon(TripType type, {bool invert = false}) {
+    IconData icon;
+    Color color;
+    switch (type) {
+      case TripType.localTrip:
+        icon = Icons.directions_walk;
+        color = const Color(0xFF10B981);
+        break;
+      case TripType.dayTrip:
+        icon = Icons.wb_sunny;
+        color = const Color(0xFFF59E0B);
+        break;
+      case TripType.multiDayTrip:
+        icon = Icons.luggage;
+        color = const Color(0xFF3B82F6);
+        break;
+    }
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: invert ? Colors.white.withOpacity(0.2) : color.withOpacity(0.1),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, color: invert ? Colors.white : color, size: 24),
     );
   }
 
   void _showAddTripDialog() {
     final dbService = Provider.of<DatabaseService>(context, listen: false);
-
     showDialog(
       context: context,
-      builder: (context) => AddTripDialog(
-        onTripAdded: (trip) {
-          dbService.saveTrip(trip);
-        },
+      builder: (_) => AddTripDialog(
+        onTripAdded: (t) =>
+            dbService.saveTrip(t.copyWith(folderId: _selectedFolderId)),
       ),
     );
   }
 
   void _showDeleteConfirmation(
-      BuildContext context, String tripId, DatabaseService dbService) {
+    BuildContext context,
+    String tripId,
+    DatabaseService dbService,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Elimina Viaggio'),
-        content: const Text('Sei sicuro di voler eliminare questo viaggio?'),
+        title: const Text('Elimina'),
+        content: const Text('Vuoi davvero cancellare questo viaggio?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -165,7 +760,8 @@ class _HomePageState extends State<HomePage> {
               Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
+              backgroundColor: Colors.red.shade400,
+              foregroundColor: Colors.white,
             ),
             child: const Text('Elimina'),
           ),
@@ -175,163 +771,46 @@ class _HomePageState extends State<HomePage> {
   }
 
   List<NoTravelPeriod> _calculateNoTravelPeriods(List<Trip> sortedTrips) {
-    final List<NoTravelPeriod> periods = [];
-
-    for (int i = 0; i < sortedTrips.length - 1; i++) {
-      final currentTrip = sortedTrips[i];
-      final nextTrip = sortedTrips[i + 1];
-
-      final currentEnd = currentTrip.endDate ?? currentTrip.startDate ?? DateTime.now();
-      final nextStart = nextTrip.startDate ?? DateTime.now();
-
-      // Se c'è un gap di almeno 2 giorni tra i viaggi
-      final daysDifference = nextStart.difference(currentEnd).inDays;
-      if (daysDifference >= 2) {
-        periods.add(NoTravelPeriod(
-          id: 'no_travel_${currentTrip.id}_${nextTrip.id}',
-          startDate: currentEnd,
-          endDate: nextStart,
-          label: daysDifference > 30
-              ? 'Lungo periodo di pausa'
-              : 'Momenti di riflessione',
-        ));
+    final periods = <NoTravelPeriod>[];
+    for (var i = 0; i < sortedTrips.length - 1; i++) {
+      final end =
+          sortedTrips[i + 1].endDate ??
+          sortedTrips[i + 1].startDate ??
+          DateTime.now();
+      final start = sortedTrips[i].startDate ?? DateTime.now();
+      final diff = start.difference(end).inDays;
+      if (diff >= 2) {
+        periods.add(
+          NoTravelPeriod(
+            id: 'gap_$i',
+            startDate: end,
+            endDate: start,
+            label: diff > 7 ? 'Momento di riflessione' : 'Pausa',
+          ),
+        );
       }
     }
-
     return periods;
   }
 
-  List<dynamic> _buildTimelineItems(List<Trip> trips, List<NoTravelPeriod> periods) {
-    final List<dynamic> items = [];
-
-    for (int i = 0; i < trips.length; i++) {
+  List<dynamic> _buildTimelineItems(
+    List<Trip> trips,
+    List<NoTravelPeriod> periods,
+  ) {
+    final items = <dynamic>[];
+    for (var i = 0; i < trips.length; i++) {
       items.add(trips[i]);
-
-      // Aggiungi periodo inattivo se esiste
-      final matchingPeriod = periods.where((p) =>
-        p.id.contains(trips[i].id ?? '')
-      ).firstOrNull;
-
-      if (matchingPeriod != null) {
-        items.add(matchingPeriod);
+      if (i < trips.length - 1) {
+        final start = trips[i].startDate;
+        final nextEnd = trips[i + 1].endDate ?? trips[i + 1].startDate;
+        if (start != null && nextEnd != null) {
+          final p = periods
+              .where((p) => p.startDate == nextEnd && p.endDate == start)
+              .firstOrNull;
+          if (p != null) items.add(p);
+        }
       }
     }
-
     return items;
   }
-
-  Widget _buildNoTravelPeriodCard(NoTravelPeriod period) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[400]!, width: 1),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.pause_circle_outline, color: Colors.grey[600], size: 32),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  period.label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[700],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${period.durationInDays} giorni senza viaggi',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                Text(
-                  '${_formatDate(period.startDate)} - ${_formatDate(period.endDate)}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[500],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
-  }
-
-  Widget _getTripTypeIcon(TripType tripType) {
-    IconData iconData;
-    Color color;
-
-    switch (tripType) {
-      case TripType.localTrip:
-        iconData = Icons.directions_walk;
-        color = Colors.green;
-        break;
-      case TripType.dayTrip:
-        iconData = Icons.wb_sunny;
-        color = Colors.orange;
-        break;
-      case TripType.multiDayTrip:
-        iconData = Icons.luggage;
-        color = Colors.blue;
-        break;
-    }
-
-    return CircleAvatar(
-      backgroundColor: color.withOpacity(0.2),
-      child: Icon(iconData, color: color, size: 20),
-    );
-  }
-
-  Widget _getTripTypeBadge(TripType tripType) {
-    String label;
-    Color color;
-
-    switch (tripType) {
-      case TripType.localTrip:
-        label = 'Local';
-        color = Colors.green;
-        break;
-      case TripType.dayTrip:
-        label = 'Day';
-        color = Colors.orange;
-        break;
-      case TripType.multiDayTrip:
-        label = 'Multi-Day';
-        color = Colors.blue;
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color, width: 1),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
 }
-

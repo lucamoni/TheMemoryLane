@@ -4,7 +4,6 @@ import '../models/trip.dart';
 
 class AddTripDialog extends StatefulWidget {
   final Function(Trip) onTripAdded;
-
   const AddTripDialog({required this.onTripAdded, super.key});
 
   @override
@@ -13,113 +12,167 @@ class AddTripDialog extends StatefulWidget {
 
 class _AddTripDialogState extends State<AddTripDialog> {
   final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _descriptionController = TextEditingController();
   TripType _selectedTripType = TripType.dayTrip;
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Nuovo Viaggio'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _titleController,
-            decoration: const InputDecoration(
-              labelText: 'Titolo del Viaggio',
-              hintText: 'Es. Weekend a Roma',
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _descriptionController,
-            decoration: const InputDecoration(
-              labelText: 'Descrizione (opzionale)',
-              hintText: 'Es. Un bellissimo weekend con gli amici',
-            ),
-            maxLines: 3,
-          ),
-          const SizedBox(height: 16),
-          DropdownButtonFormField<TripType>(
-            value: _selectedTripType,
-            decoration: const InputDecoration(
-              labelText: 'Tipo di Viaggio',
-              border: OutlineInputBorder(),
-            ),
-            items: const [
-              DropdownMenuItem(
-                value: TripType.localTrip,
-                child: Row(
-                  children: [
-                    Icon(Icons.directions_walk, size: 20),
-                    SizedBox(width: 8),
-                    Text('Local Trip - Passeggiata'),
-                  ],
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Nuova Avventura',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5,
                 ),
               ),
-              DropdownMenuItem(
-                value: TripType.dayTrip,
-                child: Row(
-                  children: [
-                    Icon(Icons.wb_sunny, size: 20),
-                    SizedBox(width: 8),
-                    Text('Day Trip - Gita di un giorno'),
-                  ],
+              const SizedBox(height: 20),
+              TextField(
+                controller: _titleController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  hintText: 'Dove stai andando?',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  prefixIcon: const Icon(Icons.map_outlined),
                 ),
               ),
-              DropdownMenuItem(
-                value: TripType.multiDayTrip,
-                child: Row(
-                  children: [
-                    Icon(Icons.luggage, size: 20),
-                    SizedBox(width: 8),
-                    Text('Multi-Day Trip - Vacanza'),
-                  ],
+              const SizedBox(height: 24),
+              const Text(
+                'Tipo di Esperienza',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildTypeSelector(),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).primaryColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Inizia Esplorazione',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    'Annulla',
+                    style: TextStyle(color: Colors.grey),
+                  ),
                 ),
               ),
             ],
-            onChanged: (TripType? newValue) {
-              if (newValue != null) {
-                setState(() {
-                  _selectedTripType = newValue;
-                });
-              }
-            },
           ),
-        ],
+        ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Annulla'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (_titleController.text.isNotEmpty) {
-              final trip = Trip(
-                id: const Uuid().v4(),
-                title: _titleController.text,
-                description: _descriptionController.text.isEmpty
-                    ? null
-                    : _descriptionController.text,
-                startDate: DateTime.now(),
-                tripType: _selectedTripType,
-              );
-              widget.onTripAdded(trip);
-              Navigator.pop(context);
-            }
-          },
-          child: const Text('Crea'),
-        ),
+    );
+  }
+
+  Widget _buildTypeSelector() {
+    return Row(
+      children: [
+        _buildTypeOption(TripType.localTrip, Icons.directions_walk, 'Local'),
+        const SizedBox(width: 8),
+        _buildTypeOption(TripType.dayTrip, Icons.wb_sunny, 'Day'),
+        const SizedBox(width: 8),
+        _buildTypeOption(TripType.multiDayTrip, Icons.luggage, 'Vacation'),
       ],
     );
+  }
+
+  Widget _buildTypeOption(TripType type, IconData icon, String label) {
+    final isSelected = _selectedTripType == type;
+    final color = isSelected ? Theme.of(context).primaryColor : Colors.white;
+    final contentColor = isSelected ? Colors.white : Colors.grey.shade700;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedTripType = type),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSelected
+                  ? Theme.of(context).primaryColor
+                  : Colors.grey.shade200,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withOpacity(0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : [],
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: contentColor, size: 24),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: contentColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _submit() {
+    if (_titleController.text.isNotEmpty) {
+      final trip = Trip(
+        id: const Uuid().v4(),
+        title: _titleController.text,
+        startDate: DateTime.now(),
+        tripType: _selectedTripType,
+        isActive: true, // Tutti i nuovi viaggi iniziano attivi
+      );
+      widget.onTripAdded(trip);
+      Navigator.pop(context);
+    }
   }
 
   @override
   void dispose() {
     _titleController.dispose();
-    _descriptionController.dispose();
     super.dispose();
   }
 }
-
