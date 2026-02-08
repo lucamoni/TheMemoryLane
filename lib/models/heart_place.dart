@@ -2,7 +2,8 @@ import 'package:hive/hive.dart';
 
 part 'heart_place.g.dart';
 
-@HiveType(typeId: 4) // New, unused typeId
+/// Modello per i "Luoghi del Cuore" (Geofencing).
+@HiveType(typeId: 4)
 class HeartPlace extends HiveObject {
   @HiveField(0)
   late String id;
@@ -17,5 +18,5 @@ class HeartPlace extends HiveObject {
   late double longitude;
 
   @HiveField(4)
-  double radius = 100.0; // Default radius in meters
+  double radius = 100.0; // Raggio predefinito in metri
 }

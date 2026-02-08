@@ -8,6 +8,7 @@ import 'services/location_service.dart';
 import 'services/notification_service.dart';
 import 'services/geofencing_manager.dart';
 import 'services/missing_memory_service.dart';
+import 'models/heart_place.dart';
 import 'screens/splash_screen.dart';
 
 import 'models/trip_folder.dart';
@@ -40,6 +41,7 @@ void main() async {
     Hive.registerAdapter(MomentTypeAdapter());
     Hive.registerAdapter(TripTypeAdapter());
     Hive.registerAdapter(TripFolderAdapter());
+    Hive.registerAdapter(HeartPlaceAdapter());
 
     // Inizializzazione dei servizi singleton
     try {
@@ -54,11 +56,8 @@ void main() async {
       debugPrint('Errore inizializzazione notifiche: $e');
     }
 
-    try {
-      await GeofencingManager.instance.init();
-    } catch (e) {
-      debugPrint('Errore inizializzazione geofencing: $e');
-    }
+    // L'inizializzazione del GeofencingManager è stata rimossa dal main() per evitare crash all'avvio.
+    // Ora viene inizializzato nello SplashScreen.
   } catch (e) {
     debugPrint('Errore critico durante l\'avvio: $e');
   }
@@ -80,22 +79,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    // Esegue il primo controllo dei "Ricordi Mancanti" e del movimento dopo l'avvio
-    Future.delayed(const Duration(seconds: 2), () {
-      _startMissingMemoryChecker();
-    });
-  }
-
-  /// Avvia un ciclo di controllo periodico per suggerire nuove acquisizioni o avvii di viaggi.
-  void _startMissingMemoryChecker() {
-    MissingMemoryService.instance.checkMissingMemories();
-    MissingMemoryService.instance.checkForMovement();
-
-    // Ripete il controllo periodicamente (ogni 15 minuti)
-    Future.delayed(const Duration(minutes: 15), () {
-      if (!mounted) return;
-      _startMissingMemoryChecker();
-    });
+    // La logica di controllo missing memory è stata spostata in HomePage dopo i check dei permessi
   }
 
   @override
@@ -105,15 +89,21 @@ class _MyAppState extends State<MyApp> {
         Provider<DatabaseService>(
           create: (_) => widget.databaseService ?? DatabaseService.instance,
         ),
-        Provider<LocationService>(create: (_) => LocationService.instance),
+        Provider<LocationService>(
+          // Inizializzazione pigra: accede a .instance solo quando necessario
+          create: (_) => LocationService.instance,
+          lazy: true,
+        ),
         Provider<NotificationService>(
           create: (_) => NotificationService.instance,
         ),
         Provider<GeofencingManager>(
           create: (_) => widget.geofenceService ?? GeofencingManager.instance,
+          lazy: true,
         ),
         Provider<MissingMemoryService>(
           create: (_) => MissingMemoryService.instance,
+          lazy: true,
         ),
       ],
       child: MaterialApp(

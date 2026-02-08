@@ -333,6 +333,13 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
     }
     if (points.isEmpty) return;
 
+    if (points.length == 1) {
+      _mapController!.animateCamera(
+        CameraUpdate.newLatLngZoom(points.first, 15),
+      );
+      return;
+    }
+
     double minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
     for (var p in points) {
       if (p.latitude < minLat) minLat = p.latitude;

@@ -7,6 +7,7 @@ import 'package:the_memory_lane/services/database_service.dart';
 import 'package:the_memory_lane/services/geofencing_manager.dart';
 
 import 'package:the_memory_lane/models/trip_folder.dart';
+import 'package:the_memory_lane/models/heart_place.dart';
 
 // Mock implementations that do nothing.
 class MockDatabaseService implements DatabaseService {
@@ -50,6 +51,15 @@ class MockDatabaseService implements DatabaseService {
 
   @override
   Future<void> saveFolder(TripFolder folder) async {}
+
+  @override
+  Future<void> deleteHeartPlace(String id) async {}
+
+  @override
+  List<HeartPlace> getAllHeartPlaces() => [];
+
+  @override
+  Future<void> saveHeartPlace(HeartPlace place) async {}
 }
 
 class MockGeofenceService implements GeofencingManager {
@@ -90,7 +100,7 @@ class MockGeofenceService implements GeofencingManager {
   List<Geofence> getGeofences() => _geofences;
 
   @override
-  void clearGeofences() {
+  Future<void> clearGeofences() async {
     _geofences.clear();
   }
 

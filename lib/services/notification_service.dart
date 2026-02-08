@@ -27,7 +27,7 @@ class NotificationService {
   }
 
   /// Mostra una notifica immediata.
-  Future<void> showNotification({
+  Future<int> showNotification({
     required String title,
     required String body,
     String? payload,
@@ -48,13 +48,9 @@ class NotificationService {
       iOS: iOSDetails,
     );
 
-    await _notificationsPlugin.show(
-      DateTime.now().millisecond,
-      title,
-      body,
-      details,
-      payload: payload,
-    );
+    final int id = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await _notificationsPlugin.show(id, title, body, details, payload: payload);
+    return id;
   }
 
   /// Annulla una specifica notifica tramite ID.

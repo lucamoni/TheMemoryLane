@@ -129,6 +129,7 @@ class Trip {
     bool? isActive,
     TripType? tripType,
     String? folderId,
+    bool clearFolderId = false,
     String? coverPath,
     bool? isPaused,
   }) {
@@ -144,7 +145,7 @@ class Trip {
       isActive: isActive ?? this.isActive,
       isPaused: isPaused ?? this.isPaused,
       tripType: tripType ?? this.tripType,
-      folderId: folderId ?? this.folderId,
+      folderId: clearFolderId ? null : (folderId ?? this.folderId),
       coverPath: coverPath ?? this.coverPath,
     );
   }

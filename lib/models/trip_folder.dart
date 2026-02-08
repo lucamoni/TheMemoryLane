@@ -3,6 +3,7 @@ import 'package:hive/hive.dart';
 part 'trip_folder.g.dart';
 
 @HiveType(typeId: 5)
+/// Cartella per raggruppare i viaggi.
 class TripFolder {
   @HiveField(0)
   final String id;

@@ -211,6 +211,15 @@ class _GeofencesPageState extends State<GeofencesPage>
   /// Adatta la visuale della mappa per includere tutti i geofence.
   void _fitBounds(List<dynamic> geofences) {
     if (geofences.isEmpty) return;
+
+    if (geofences.length == 1) {
+      final gf = geofences.first;
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(LatLng(gf.latitude, gf.longitude), 15),
+      );
+      return;
+    }
+
     double minLat = geofences.first.latitude;
     double maxLat = geofences.first.latitude;
     double minLng = geofences.first.longitude;

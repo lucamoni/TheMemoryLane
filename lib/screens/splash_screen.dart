@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home_page.dart';
+import '../services/location_service.dart';
+import '../services/geofencing_manager.dart';
 
 /// Schermata di pre-caricamento animata (Splash Screen).
 /// Fornisce un ingresso dinamico all'app con animazioni di scala e opacità del logo.
@@ -25,34 +27,67 @@ class _SplashScreenState extends State<SplashScreen>
       duration: const Duration(milliseconds: 1500),
     );
 
-    // Animazione di scala: il logo "pulsa" leggermente partendo da 1.0
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOutSine),
-    );
+    // Animazione di scala: partiamo dalla dimensione normale (1.0) per evitare salti
+    // rispetto allo splash nativo, facciamo solo un leggero respiro (pulse)
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.05,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
 
-    // Animazione di dissolvenza: partiamo già visibili per evitare flickering con la native splash
+    // Animazione di dissolvenza: partiamo già visibili (opacity 1.0)
     _fadeAnimation = Tween<double>(begin: 1.0, end: 1.0).animate(_controller);
 
-    // Avvia l'animazione e naviga verso la Home al termine
-    _controller.repeat(reverse: true);
+    // Avvia l'animazione
+    _controller.repeat(reverse: true); // Pulsazione continua mentre carica
+    _initApp();
+  }
 
-    // Attendiamo un tempo ragionevole per dare un senso di "caricamento" e poi andiamo alla Home
-    Future.delayed(const Duration(milliseconds: 1800), () {
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) =>
-                const HomePage(),
-            transitionsBuilder:
-                (context, animation, secondaryAnimation, child) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
-            transitionDuration: const Duration(milliseconds: 600),
-          ),
-        );
+  /// Esegue i controlli di inizializzazione (permessi, servizi) mentre l'animazione scorre.
+  Future<void> _initApp() async {
+    // 1. Attendi almeno la durata dell'animazione per l'effetto visivo
+    await Future.delayed(const Duration(milliseconds: 1800));
+
+    if (!mounted) return;
+
+    // 2. Richiedi i permessi di localizzazione in modo sicuro
+    bool permissionGranted = false;
+    try {
+      permissionGranted = await LocationService.instance
+          .requestLocationPermission();
+    } catch (e) {
+      debugPrint('Errore richiesta permessi splash: $e');
+    }
+
+    // 3. Inizializza il gestore dei geofence (carica i dati dal DB)
+    try {
+      await GeofencingManager.instance.init();
+    } catch (e) {
+      debugPrint('Errore inizializzazione geofencing splash: $e');
+    }
+
+    // 4. Se i permessi sono concessi, avvia il monitoraggio geofence
+    if (permissionGranted) {
+      try {
+        await GeofencingManager.instance.startMonitoring();
+      } catch (e) {
+        debugPrint('Errore avvio geofencing splash: $e');
       }
-    });
+    }
+
+    if (!mounted) return;
+
+    // 4. Naviga alla Home Page
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const HomePage(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 600),
+      ),
+    );
   }
 
   @override

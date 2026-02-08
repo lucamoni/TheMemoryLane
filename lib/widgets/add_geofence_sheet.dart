@@ -285,36 +285,38 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
 
   /// Tab per la ricerca di un luogo tramite indirizzo.
   Widget _buildSearchTab() {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          TextField(
-            controller: _addressController,
-            decoration: InputDecoration(
-              hintText: 'Cerca indirizzo (es. Piazza Maggiore, Bologna)',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.arrow_forward),
-                onPressed: _searchAddress,
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            TextField(
+              controller: _addressController,
+              decoration: InputDecoration(
+                hintText: 'Cerca indirizzo (es. Piazza Maggiore, Bologna)',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.arrow_forward),
+                  onPressed: _searchAddress,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              onSubmitted: (_) => _searchAddress(),
             ),
-            onSubmitted: (_) => _searchAddress(),
-          ),
-          const SizedBox(height: 20),
-          if (_isLoading) const CircularProgressIndicator(),
-          if (_selectedPosition != null && !_isLoading)
-            ListTile(
-              leading: const Icon(Icons.check_circle, color: Colors.green),
-              title: const Text('Posizione trovata'),
-              subtitle: Text(
-                '${_selectedPosition!.latitude.toStringAsFixed(4)}, ${_selectedPosition!.longitude.toStringAsFixed(4)}',
+            const SizedBox(height: 20),
+            if (_isLoading) const CircularProgressIndicator(),
+            if (_selectedPosition != null && !_isLoading)
+              ListTile(
+                leading: const Icon(Icons.check_circle, color: Colors.green),
+                title: const Text('Posizione trovata'),
+                subtitle: Text(
+                  '${_selectedPosition!.latitude.toStringAsFixed(4)}, ${_selectedPosition!.longitude.toStringAsFixed(4)}',
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

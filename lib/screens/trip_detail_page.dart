@@ -163,24 +163,12 @@ class _TripDetailPageState extends State<TripDetailPage>
           fit: StackFit.expand,
           children: [
             _currentTrip.coverPath != null
-                ? Image.file(
-                    File(_currentTrip.coverPath!),
-                    fit: BoxFit.cover,
-                    cacheHeight: 400,
-                    errorBuilder: (context, error, stackTrace) =>
-                        _buildDefaultGradientBackground(context),
-                  )
+                ? _buildCoverImage(_currentTrip.coverPath!)
                 : _currentTrip.moments.any((m) => m.type == MomentType.photo)
-                ? Image.file(
-                    File(
-                      _currentTrip.moments
-                          .firstWhere((m) => m.type == MomentType.photo)
-                          .content!,
-                    ),
-                    fit: BoxFit.cover,
-                    cacheHeight: 400,
-                    errorBuilder: (context, error, stackTrace) =>
-                        _buildDefaultGradientBackground(context),
+                ? _buildCoverImage(
+                    _currentTrip.moments
+                        .firstWhere((m) => m.type == MomentType.photo)
+                        .content!,
                   )
                 : _buildDefaultGradientBackground(context),
             // Overlay per rendere il titolo leggibile in ogni stato
@@ -244,6 +232,26 @@ class _TripDetailPageState extends State<TripDetailPage>
         ),
       ),
     );
+  }
+
+  /// Costruisce l'immagine di copertina gestendo sia file locali che asset demo.
+  Widget _buildCoverImage(String path) {
+    final bool isAsset = path.startsWith('assets/');
+    return isAsset
+        ? Image.asset(
+            path,
+            fit: BoxFit.cover,
+            cacheHeight: 400,
+            errorBuilder: (context, error, stackTrace) =>
+                _buildDefaultGradientBackground(context),
+          )
+        : Image.file(
+            File(path),
+            fit: BoxFit.cover,
+            cacheHeight: 400,
+            errorBuilder: (context, error, stackTrace) =>
+                _buildDefaultGradientBackground(context),
+          );
   }
 
   Widget _buildDefaultGradientBackground(BuildContext context) {
@@ -359,6 +367,7 @@ class _TripDetailPageState extends State<TripDetailPage>
   Widget _buildTimelineTab() {
     return TimelineWidget(
       trip: _currentTrip,
+      scrollController: _timelineScrollController,
       onMomentDeleted: () async {
         final db = Provider.of<DatabaseService>(context, listen: false);
         final updatedTrip = await db.getTrip(_currentTrip.id!);
@@ -398,13 +407,28 @@ class _TripDetailPageState extends State<TripDetailPage>
     final momentIndex = sortedMoments.indexWhere((m) => m.id == moment.id);
     if (momentIndex == -1) return;
 
-    // Stima offset considerando header e card
-    double offset = 300.0 + (momentIndex * 280.0);
+    // Stima dinamica dell'offset: Header (~120) + Moments (media ~350px per card)
+    // Usiamo un valore più preciso basato sulla struttura della card
+    double offset = 120.0;
+    for (int i = 0; i < momentIndex; i++) {
+      final m = sortedMoments[i];
+      // Altezza stimata: Header card (60) + Preview (200 se presente) + Desc (30 se presente) + Footer (40)
+      double cardHeight = 120.0;
+      if (m.type == MomentType.photo || m.type == MomentType.video) {
+        cardHeight += 212;
+      } else if (m.type == MomentType.audio) {
+        cardHeight += 80;
+      }
+      if (m.description != null && m.description!.isNotEmpty) {
+        cardHeight += 30;
+      }
+      offset += cardHeight + 16; // Add margin/padding
+    }
 
     _timelineScrollController.animateTo(
       offset,
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOutCubic,
     );
   }
 

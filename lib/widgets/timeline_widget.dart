@@ -7,13 +7,20 @@ import '../models/moment.dart';
 import '../models/trip.dart';
 import '../services/database_service.dart';
 import 'package:provider/provider.dart';
+import '../utils/geo_utils.dart';
 
 /// Widget che visualizza la timeline cronologica dei momenti di un viaggio.
 class TimelineWidget extends StatelessWidget {
   final Trip trip;
   final VoidCallback? onMomentDeleted;
+  final ScrollController? scrollController;
 
-  const TimelineWidget({super.key, required this.trip, this.onMomentDeleted});
+  const TimelineWidget({
+    super.key,
+    required this.trip,
+    this.onMomentDeleted,
+    this.scrollController,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +33,7 @@ class TimelineWidget extends StatelessWidget {
       );
 
     return ListView.builder(
+      controller: scrollController,
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
       physics: const BouncingScrollPhysics(),
       itemCount: sortedMoments.length + 1, // Sempre +1 per l'header
@@ -38,7 +46,33 @@ class TimelineWidget extends StatelessWidget {
         final moment = sortedMoments[momentIdx];
         final isLast = momentIdx == sortedMoments.length - 1;
 
-        return _buildTimelineItem(context, moment, isLast);
+        // Calcola distanza e tempo dal momento precedente
+        double? distanceSinceLast;
+        Duration? durationSinceLast;
+        if (momentIdx > 0) {
+          final prevMoment = sortedMoments[momentIdx - 1];
+          // Usiamo 0.0 come fallback se le coordinate sono null (non dovrebbero esserlo)
+          distanceSinceLast = GeoUtils.calculateDistance(
+            prevMoment.latitude ?? 0.0,
+            prevMoment.longitude ?? 0.0,
+            moment.latitude ?? 0.0,
+            moment.longitude ?? 0.0,
+          );
+
+          if (prevMoment.timestamp != null && moment.timestamp != null) {
+            durationSinceLast = moment.timestamp!.difference(
+              prevMoment.timestamp!,
+            );
+          }
+        }
+
+        return _buildTimelineItem(
+          context,
+          moment,
+          isLast,
+          distanceSinceLast,
+          durationSinceLast,
+        );
       },
     );
   }
@@ -143,7 +177,13 @@ class TimelineWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildTimelineItem(BuildContext context, Moment moment, bool isLast) {
+  Widget _buildTimelineItem(
+    BuildContext context,
+    Moment moment,
+    bool isLast,
+    double? distanceSinceLast,
+    Duration? durationSinceLast,
+  ) {
     if (moment.type == MomentType.dayEnd) {
       return _buildDayEndMarker(moment);
     }
@@ -156,7 +196,14 @@ class TimelineWidget extends StatelessWidget {
           _buildTimelineIndicator(moment, isLast),
           const SizedBox(width: 20),
           // Card del momento
-          Expanded(child: _buildMomentCard(context, moment)),
+          Expanded(
+            child: _buildMomentCard(
+              context,
+              moment,
+              distanceSinceLast,
+              durationSinceLast,
+            ),
+          ),
         ],
       ),
     );
@@ -202,7 +249,12 @@ class TimelineWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildMomentCard(BuildContext context, Moment moment) {
+  Widget _buildMomentCard(
+    BuildContext context,
+    Moment moment,
+    double? distanceSinceLast,
+    Duration? durationSinceLast,
+  ) {
     final dbService = Provider.of<DatabaseService>(context, listen: false);
 
     return Container(
@@ -311,6 +363,7 @@ class TimelineWidget extends StatelessWidget {
           // Footer con posizione (aggiornato per usare moment.latitude/longitude se moment.location non esiste)
           // Se la classe Moment ha location, usiamolo, altrimenti proviamo latitude/longitude.
           // In base ai log precedenti, sembrava avere latitude/longitude.
+          // Footer con posizione e distanza
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
             child: Row(
@@ -323,7 +376,7 @@ class TimelineWidget extends StatelessWidget {
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
-                    'Momento registrato in questa posizione',
+                    _formatNarrative(distanceSinceLast, durationSinceLast),
                     style: TextStyle(fontSize: 10, color: Colors.grey.shade400),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -337,12 +390,18 @@ class TimelineWidget extends StatelessWidget {
   }
 
   Widget _buildPhotoPreview(String path) {
+    final bool isAsset = path.startsWith('assets/');
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 12),
       height: 200,
       width: double.infinity,
       decoration: BoxDecoration(
-        image: DecorationImage(image: FileImage(File(path)), fit: BoxFit.cover),
+        image: DecorationImage(
+          image: isAsset
+              ? AssetImage(path)
+              : FileImage(File(path)) as ImageProvider,
+          fit: BoxFit.cover,
+        ),
       ),
     );
   }
@@ -436,6 +495,38 @@ class TimelineWidget extends StatelessWidget {
       case MomentType.audio:
         return 'Audio';
     }
+  }
+
+  /// Formatta una narrazione di distanza e tempo trascorso.
+  String _formatNarrative(double? distance, Duration? duration) {
+    if ((distance == null || distance < 0.01) &&
+        (duration == null || duration.inMinutes < 1)) {
+      return 'Momento registrato in questa posizione';
+    }
+
+    String result = '';
+    if (distance != null && distance >= 0.01) {
+      result += '+ ${distance.toStringAsFixed(2)} km';
+    }
+
+    if (duration != null && duration.inMinutes >= 1) {
+      if (result.isNotEmpty) result += ', ';
+      if (duration.inDays > 0) {
+        result += 'trascorsi ${duration.inDays} g';
+      } else if (duration.inHours > 0) {
+        final mins = duration.inMinutes % 60;
+        result +=
+            'trascorse ${duration.inHours} h${mins > 0 ? ' e $mins min' : ''}';
+      } else {
+        result += 'trascorsi ${duration.inMinutes} min';
+      }
+    }
+
+    if (result.isNotEmpty) {
+      result += ' dal momento precedente';
+    }
+
+    return result.isEmpty ? 'Momento registrato' : result;
   }
 
   void _showDeleteDialog(
@@ -533,7 +624,13 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
                 await player.pause();
                 setState(() => isPlaying = false);
               } else {
-                await player.play(DeviceFileSource(widget.path));
+                if (widget.path.startsWith('assets/')) {
+                  await player.play(
+                    AssetSource(widget.path.replaceFirst('assets/', '')),
+                  );
+                } else {
+                  await player.play(DeviceFileSource(widget.path));
+                }
                 setState(() => isPlaying = true);
               }
             },
@@ -608,12 +705,16 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.file(File(widget.path))
-      ..initialize().then((_) {
-        setState(() => _initialized = true);
-        _controller.play();
-        _controller.setLooping(true);
-      });
+    final bool isAsset = widget.path.startsWith('assets/');
+    _controller = isAsset
+        ? VideoPlayerController.asset(widget.path)
+        : VideoPlayerController.file(File(widget.path));
+
+    _controller.initialize().then((_) {
+      setState(() => _initialized = true);
+      _controller.play();
+      _controller.setLooping(true);
+    });
   }
 
   @override

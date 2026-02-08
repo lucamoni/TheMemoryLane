@@ -10,7 +10,8 @@ class LocationService {
 
   LocationService._internal();
 
-  final Location _location = Location();
+  // Inizializzazione pigra del plugin Location per evitare controlli dei permessi all'avvio
+  late final Location _location = Location();
   bool _isTracking = false;
   List<List<double>> _gpsTrack = [];
 
@@ -20,19 +21,27 @@ class LocationService {
 
   /// Richiede i permessi per la localizzazione e configura il modulo GPS.
   Future<bool> requestLocationPermission() async {
-    // Configura il modulo GPS per ottimizzare il consumo batteria
-    await _location.changeSettings(
-      accuracy: LocationAccuracy.high,
-      interval: 5000, // Aggiornamento ogni 5 secondi
-      distanceFilter: 15, // Filtro di 15 metri per ridurre il rumore
-    );
-
-    final hasPermission = await _location.hasPermission();
-    if (hasPermission == PermissionStatus.denied) {
-      final permissionStatus = await _location.requestPermission();
-      return permissionStatus == PermissionStatus.granted;
+    var permissionStatus = await _location.hasPermission();
+    if (permissionStatus == PermissionStatus.denied) {
+      permissionStatus = await _location.requestPermission();
+      if (permissionStatus != PermissionStatus.granted) {
+        return false;
+      }
     }
-    return hasPermission == PermissionStatus.granted;
+
+    // Configura il modulo GPS per ottimizzare il consumo batteria solo dopo aver ottenuto il permesso
+    try {
+      await _location.changeSettings(
+        accuracy: LocationAccuracy.high,
+        interval: 5000, // Aggiornamento ogni 5 secondi
+        distanceFilter: 15, // Filtro di 15 metri per ridurre il rumore
+      );
+    } catch (e) {
+      // Ignora errori minori di configurazione se il permesso c'è comunque
+      // o se il provider non è pronto
+    }
+
+    return true;
   }
 
   /// Avvia la registrazione del percorso GPS.
@@ -107,12 +116,6 @@ class LocationService {
   /// Restituisce la lista dei punti del tracciato attuale.
   List<List<double>> getTrack() {
     return List.from(_gpsTrack);
-  }
-
-  /// Restituisce l'ultima posizione registrata se disponibile.
-  LocationData? getLastLocation() {
-    if (_gpsTrack.isEmpty) return null;
-    return _location.getLocation() as LocationData?;
   }
 
   /// Resetta il tracciato memorizzato.

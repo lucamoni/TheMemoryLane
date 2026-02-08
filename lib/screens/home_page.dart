@@ -11,9 +11,12 @@ import 'trip_detail_page.dart';
 import 'geofences_page.dart';
 import 'package:intl/intl.dart';
 
+import 'package:uuid/uuid.dart';
 import '../models/trip_folder.dart';
 import '../services/location_service.dart';
-import 'package:uuid/uuid.dart';
+import '../services/demo_data_service.dart';
+import '../services/missing_memory_service.dart';
+import 'stats_page.dart';
 
 /// Pagina principale dell'applicazione che mostra la lista dei viaggi e delle cartelle.
 class HomePage extends StatefulWidget {
@@ -26,6 +29,27 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   String? _selectedFolderId;
   TripType? _selectedType;
+
+  @override
+  void initState() {
+    super.initState();
+    // Avvia il monitoraggio dei ricordi mancanti dopo che la pagina è caricata e i permessi verificati dallo Splash
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startMissingMemoryChecker();
+    });
+  }
+
+  /// Avvia un ciclo di controllo periodico per suggerire nuove acquisizioni o avvii di viaggi.
+  void _startMissingMemoryChecker() {
+    MissingMemoryService.instance.checkMissingMemories();
+    MissingMemoryService.instance.checkForMovement();
+
+    // Ripete il controllo periodicamente (ogni 15 minuti)
+    Future.delayed(const Duration(minutes: 15), () {
+      if (!mounted) return;
+      _startMissingMemoryChecker();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +72,6 @@ class _HomePageState extends State<HomePage> {
                 return _buildEmptyState();
               }
 
-              // Filtra i viaggi in base alla cartella selezionata
               // Filtra i viaggi in base alla cartella e al tipo selezionato
               final filteredTrips = allTrips.where((t) {
                 final folderMatch =
@@ -360,32 +383,65 @@ class _HomePageState extends State<HomePage> {
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Image.asset('assets/logo/logo_192.png', height: 32, width: 32),
-          const SizedBox(width: 10),
-          const Text('The Memory Lane'),
+          Image.asset('assets/logo/logo_192.png', height: 28, width: 28),
+          const SizedBox(width: 8),
+          const Flexible(
+            child: Text(
+              'The Memory Lane',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 18),
+            ),
+          ),
         ],
       ),
       centerTitle: false,
       backgroundColor: Colors.transparent,
       actions: [
         Container(
-          margin: const EdgeInsets.only(right: 12),
+          margin: const EdgeInsets.only(right: 8, top: 8, bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
             color: Colors.white,
-            shape: BoxShape.circle,
+            borderRadius: BorderRadius.circular(32),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
-          child: IconButton(
-            icon: const Icon(Icons.favorite_rounded, color: Color(0xFFFFA62B)),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const GeofencesPage()),
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                padding: EdgeInsets.zero,
+                icon: const Icon(
+                  Icons.bar_chart_rounded,
+                  color: Color(0xFF16697A),
+                  size: 22,
+                ),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const StatsPage()),
+                ),
+              ),
+              Container(width: 1, height: 16, color: Colors.grey.shade200),
+              IconButton(
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                padding: EdgeInsets.zero,
+                icon: const Icon(
+                  Icons.favorite_rounded,
+                  color: Color(0xFFFFA62B),
+                  size: 22,
+                ),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const GeofencesPage()),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -447,6 +503,26 @@ class _HomePageState extends State<HomePage> {
               ),
               child: const Text('Crea Primo Viaggio'),
             ),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              onPressed: () async {
+                await DemoDataService.injectDemoData();
+                if (mounted) {
+                  setState(() {}); // Forza il refresh
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Dati demo generati con successo! 🚀'),
+                      backgroundColor: Color(0xFF16697A),
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+              label: const Text('Genera Dati Demo (Esame)'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey.shade600,
+              ),
+            ),
             const SizedBox(height: 40),
           ],
         ),
@@ -462,13 +538,11 @@ class _HomePageState extends State<HomePage> {
             (trip.coverPath != null ||
                 trip.moments.any((m) => m.type == MomentType.photo))
             ? DecorationImage(
-                image: FileImage(
-                  File(
-                    trip.coverPath ??
-                        trip.moments
-                            .firstWhere((m) => m.type == MomentType.photo)
-                            .content!,
-                  ),
+                image: _buildTripImageProvider(
+                  trip.coverPath ??
+                      trip.moments
+                          .firstWhere((m) => m.type == MomentType.photo)
+                          .content!,
                 ),
                 fit: BoxFit.cover,
                 colorFilter: ColorFilter.mode(
@@ -660,13 +734,11 @@ class _HomePageState extends State<HomePage> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
                   image: DecorationImage(
-                    image: FileImage(
-                      File(
-                        trip.coverPath ??
-                            trip.moments
-                                .firstWhere((m) => m.type == MomentType.photo)
-                                .content!,
-                      ),
+                    image: _buildTripImageProvider(
+                      trip.coverPath ??
+                          trip.moments
+                              .firstWhere((m) => m.type == MomentType.photo)
+                              .content!,
                     ),
                     fit: BoxFit.cover,
                   ),
@@ -746,9 +818,11 @@ class _HomePageState extends State<HomePage> {
             if (val == 'delete') {
               _showDeleteConfirmation(context, trip.id!, dbService);
             } else {
-              dbService.saveTrip(
-                trip.copyWith(folderId: val == 'none' ? null : val),
-              );
+              if (val == 'none') {
+                dbService.saveTrip(trip.copyWith(clearFolderId: true));
+              } else {
+                dbService.saveTrip(trip.copyWith(folderId: val));
+              }
             }
           },
           itemBuilder: (context) => [
@@ -790,7 +864,7 @@ class _HomePageState extends State<HomePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${period.durationInDays} giorni di pausa - ${period.label}',
+                  '${_formatGapDuration(period)} di pausa - ${period.label}',
                   style: TextStyle(
                     fontSize: 11,
                     color: Colors.grey.shade500,
@@ -803,6 +877,26 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
+  }
+
+  /// Formatta la durata di una pausa in modo leggibile.
+  String _formatGapDuration(NoTravelPeriod period) {
+    final diff = period.endDate.difference(period.startDate);
+    if (diff.inDays > 0) {
+      return '${diff.inDays} ${diff.inDays == 1 ? 'giorno' : 'giorni'}';
+    } else if (diff.inHours > 0) {
+      return '${diff.inHours} ${diff.inHours == 1 ? 'ora' : 'ore'}';
+    } else {
+      return '${diff.inMinutes} minuti';
+    }
+  }
+
+  /// Helper per ottenere l'ImageProvider corretto (Asset o File).
+  ImageProvider _buildTripImageProvider(String path) {
+    if (path.startsWith('assets/')) {
+      return AssetImage(path);
+    }
+    return FileImage(File(path));
   }
 
   Widget _getTripTypeIcon(TripType type, {bool invert = false}) {
@@ -896,19 +990,23 @@ class _HomePageState extends State<HomePage> {
   List<NoTravelPeriod> _calculateNoTravelPeriods(List<Trip> sortedTrips) {
     final periods = <NoTravelPeriod>[];
     for (var i = 0; i < sortedTrips.length - 1; i++) {
-      final end =
-          sortedTrips[i + 1].endDate ??
-          sortedTrips[i + 1].startDate ??
-          DateTime.now();
-      final start = sortedTrips[i].startDate ?? DateTime.now();
-      final diff = start.difference(end).inDays;
-      if (diff >= 2) {
+      final newerTrip = sortedTrips[i];
+      final olderTrip = sortedTrips[i + 1];
+
+      final endOfOlder =
+          olderTrip.endDate ?? olderTrip.startDate ?? DateTime.now();
+      final startOfNewer = newerTrip.startDate ?? DateTime.now();
+
+      final diff = startOfNewer.difference(endOfOlder);
+
+      // Mostriamo la pausa se è superiore a 1 ora
+      if (diff.inMinutes >= 60) {
         periods.add(
           NoTravelPeriod(
             id: 'gap_$i',
-            startDate: end,
-            endDate: start,
-            label: diff > 7 ? 'Momento di riflessione' : 'Pausa',
+            startDate: endOfOlder,
+            endDate: startOfNewer,
+            label: diff.inDays > 7 ? 'Momento di riflessione' : 'Pausa',
           ),
         );
       }
@@ -929,7 +1027,7 @@ class _HomePageState extends State<HomePage> {
         final tripDate = trips[tripIdx].startDate ?? DateTime.now();
         final periodDate = periods[periodIdx].endDate;
 
-        if (tripDate.isAfter(periodDate)) {
+        if (!periodDate.isAfter(tripDate)) {
           items.add(trips[tripIdx]);
           tripIdx++;
         } else {
