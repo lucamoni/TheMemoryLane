@@ -2,6 +2,7 @@ import 'package:hive/hive.dart';
 
 part 'moment.g.dart';
 
+/// Tipi di momenti che possono essere catturati durante un viaggio.
 @HiveType(typeId: 2)
 enum MomentType {
   @HiveField(0)
@@ -14,6 +15,7 @@ enum MomentType {
   video,
 }
 
+/// Rappresenta un singolo istante memorabile catturato dall'utente.
 @HiveType(typeId: 1)
 class Moment {
   @HiveField(0)
@@ -26,7 +28,7 @@ class Moment {
   final MomentType? type;
 
   @HiveField(3)
-  final String? content; // Nota, percorso foto, o percorso audio
+  final String? content; // Può contenere il testo di una nota o il percorso di un file multimediale
 
   @HiveField(4)
   final DateTime? timestamp;

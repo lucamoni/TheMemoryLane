@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/trip.dart';
 
+/// Dialog per la creazione di un nuovo viaggio.
+/// Permette di inserire il titolo e selezionare la tipologia di esperienza (Passeggiata, Gita, Vacanza).
 class AddTripDialog extends StatefulWidget {
   final Function(Trip) onTripAdded;
   const AddTripDialog({required this.onTripAdded, super.key});
@@ -96,18 +98,28 @@ class _AddTripDialogState extends State<AddTripDialog> {
     );
   }
 
+  /// Costruisce il selettore orizzontale delle tipologie di viaggio.
   Widget _buildTypeSelector() {
     return Row(
       children: [
-        _buildTypeOption(TripType.localTrip, Icons.directions_walk, 'Local'),
+        _buildTypeOption(
+          TripType.localTrip,
+          Icons.directions_walk_rounded,
+          'Passeggiata',
+        ),
         const SizedBox(width: 8),
-        _buildTypeOption(TripType.dayTrip, Icons.wb_sunny, 'Day'),
+        _buildTypeOption(TripType.dayTrip, Icons.explore_rounded, 'Gita'),
         const SizedBox(width: 8),
-        _buildTypeOption(TripType.multiDayTrip, Icons.luggage, 'Vacation'),
+        _buildTypeOption(
+          TripType.multiDayTrip,
+          Icons.flight_takeoff_rounded,
+          'Vacanza',
+        ),
       ],
     );
   }
 
+  /// Opzione singola del selettore tipologia viaggio.
   Widget _buildTypeOption(TripType type, IconData icon, String label) {
     final isSelected = _selectedTripType == type;
     final color = isSelected ? Theme.of(context).primaryColor : Colors.white;
@@ -143,9 +155,10 @@ class _AddTripDialogState extends State<AddTripDialog> {
               const SizedBox(height: 8),
               Text(
                 label,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: contentColor,
-                  fontSize: 11,
+                  fontSize: 10,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -156,6 +169,7 @@ class _AddTripDialogState extends State<AddTripDialog> {
     );
   }
 
+  /// Valida e invia i dati del nuovo viaggio.
   void _submit() {
     if (_titleController.text.isNotEmpty) {
       final trip = Trip(
@@ -163,7 +177,7 @@ class _AddTripDialogState extends State<AddTripDialog> {
         title: _titleController.text,
         startDate: DateTime.now(),
         tripType: _selectedTripType,
-        isActive: true, // Tutti i nuovi viaggi iniziano attivi
+        isActive: true, // Tutti i nuovi viaggi iniziano in stato attivo
       );
       widget.onTripAdded(trip);
       Navigator.pop(context);

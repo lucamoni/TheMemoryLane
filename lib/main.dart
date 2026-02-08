@@ -18,42 +18,43 @@ void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Forza Hybrid Composition per risolvere il crash: java.lang.IllegalStateException: Image is already closed
-    // su dispositivi con GPU Mali (come Samsung Galaxy J6)
+    // Forza Hybrid Composition per risolvere potenziali crash su alcuni driver GPU Android
     final GoogleMapsFlutterPlatform mapsImplementation =
         GoogleMapsFlutterPlatform.instance;
     if (mapsImplementation is GoogleMapsFlutterAndroid) {
       mapsImplementation.useAndroidViewSurface = true;
     }
 
-    // Inizializza Hive in modo sicuro
+    // Inizializza l'archiviazione locale Hive
     await Hive.initFlutter();
+
+    // Registrazione dei TypeAdapter per i modelli personalizzati
     Hive.registerAdapter(MomentAdapter());
     Hive.registerAdapter(TripAdapter());
     Hive.registerAdapter(MomentTypeAdapter());
     Hive.registerAdapter(TripTypeAdapter());
     Hive.registerAdapter(TripFolderAdapter());
 
-    // Inizializza i servizi separatamente per evitare che il crash di uno blocchi l'app
+    // Inizializzazione dei servizi singleton
     try {
       await DatabaseService.instance.init();
     } catch (e) {
-      debugPrint('Database initialization error: $e');
+      debugPrint('Errore inizializzazione database: $e');
     }
 
     try {
       await NotificationService.instance.init();
     } catch (e) {
-      debugPrint('Notification initialization error: $e');
+      debugPrint('Errore inizializzazione notifiche: $e');
     }
 
     try {
       await GeofencingManager.instance.init();
     } catch (e) {
-      debugPrint('Geofencing initialization error: $e');
+      debugPrint('Errore inizializzazione geofencing: $e');
     }
   } catch (e) {
-    debugPrint('Critical initialization error: $e');
+    debugPrint('Errore critico durante l\'avvio: $e');
   }
 
   runApp(const MyApp());
@@ -73,18 +74,18 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    // Avvia il controllo periodico dei Missing Memory ogni 15 minuti
+    // Esegue il primo controllo dei "Ricordi Mancanti" e del movimento dopo l'avvio
     Future.delayed(const Duration(seconds: 2), () {
       _startMissingMemoryChecker();
     });
   }
 
+  /// Avvia un ciclo di controllo periodico per suggerire nuove acquisizioni o avvii di viaggi.
   void _startMissingMemoryChecker() {
-    // Effettua il primo controllo
     MissingMemoryService.instance.checkMissingMemories();
     MissingMemoryService.instance.checkForMovement();
 
-    // Poi ripeti ogni 15 minuti
+    // Ripete il controllo periodicamente (ogni 15 minuti)
     Future.delayed(const Duration(minutes: 15), () {
       if (mounted) {
         _startMissingMemoryChecker();
@@ -115,10 +116,10 @@ class _MyAppState extends State<MyApp> {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF16697A), // Deep Teal dal logo
+            seedColor: const Color(0xFF16697A), // Deep Teal
             primary: const Color(0xFF16697A),
-            secondary: const Color(0xFFFFA62B), // Gold dal logo
-            tertiary: const Color(0xFF82C0CC), // Light Blue dal logo
+            secondary: const Color(0xFFFFA62B), // Gold
+            tertiary: const Color(0xFF82C0CC), // Light Blue
             surface: const Color(0xFFF8FAFC),
           ),
           useMaterial3: true,
@@ -126,7 +127,7 @@ class _MyAppState extends State<MyApp> {
           textTheme: const TextTheme(
             headlineLarge: TextStyle(
               fontWeight: FontWeight.bold,
-              color: Color(0xFF1B262C), // Dark Navy dal logo
+              color: Color(0xFF1B262C), // Dark Navy
               letterSpacing: -1,
             ),
             headlineMedium: TextStyle(

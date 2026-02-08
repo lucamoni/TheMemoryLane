@@ -1,6 +1,7 @@
 import 'package:location/location.dart';
 import 'dart:math' as math;
 
+/// Servizio per la gestione della geolocalizzazione e del tracciamento GPS.
 class LocationService {
   static final LocationService _instance = LocationService._internal();
 
@@ -15,12 +16,13 @@ class LocationService {
   bool get isTracking => _isTracking;
   List<List<double>> get gpsTrack => _gpsTrack;
 
+  /// Richiede i permessi per la localizzazione e configura il modulo GPS.
   Future<bool> requestLocationPermission() async {
-    // Configura il modulo GPS per maggiore efficienza hardware
+    // Configura il modulo GPS per ottimizzare il consumo batteria
     await _location.changeSettings(
       accuracy: LocationAccuracy.high,
-      interval: 5000, // Ogni 5 secondi (invece che continuo)
-      distanceFilter: 15, // Ogni 15 metri
+      interval: 5000, // Aggiornamento ogni 5 secondi
+      distanceFilter: 15, // Filtro di 15 metri per ridurre il rumore
     );
 
     final hasPermission = await _location.hasPermission();
@@ -31,15 +33,14 @@ class LocationService {
     return hasPermission == PermissionStatus.granted;
   }
 
+  /// Avvia la registrazione del percorso GPS.
   Future<void> startTracking() async {
     final hasPermission = await requestLocationPermission();
     if (!hasPermission) {
-      throw Exception('Location permission denied');
+      throw Exception('Permesso di localizzazione negato');
     }
 
     _isTracking = true;
-    // Non azzeriamo il track se vogliamo riprendere quello esistente
-    // _gpsTrack = [];
 
     // Monitora le posizioni con filtro di distanza per efficienza
     _location.onLocationChanged.listen((LocationData currentLocation) {
@@ -59,7 +60,7 @@ class LocationService {
             currentLocation.latitude!,
             currentLocation.longitude!,
           );
-          // Aggiungi punto solo se ci si è mossi di almeno 10 metri
+          // Aggiungi un punto solo se lo spostamento è superiore a 10 metri per pulizia del tracciato
           if (dist > 0.01) {
             _gpsTrack.add([
               currentLocation.latitude!,
@@ -71,10 +72,12 @@ class LocationService {
     });
   }
 
+  /// Interrompe la registrazione del percorso.
   Future<void> stopTracking() async {
     _isTracking = false;
   }
 
+  /// Ottiene la posizione GPS attuale.
   Future<LocationData?> getCurrentLocation() async {
     final hasPermission = await requestLocationPermission();
     if (!hasPermission) {
@@ -83,23 +86,28 @@ class LocationService {
     return await _location.getLocation();
   }
 
+  /// Restituisce la lista dei punti del tracciato attuale.
   List<List<double>> getTrack() {
     return List.from(_gpsTrack);
   }
 
+  /// Restituisce l'ultima posizione registrata se disponibile.
   LocationData? getLastLocation() {
     if (_gpsTrack.isEmpty) return null;
     return _location.getLocation() as LocationData?;
   }
 
+  /// Resetta il tracciato memorizzato.
   void clearTrack() {
     _gpsTrack = [];
   }
 
+  /// Imposta un tracciato iniziale (es. per riprendere un viaggio salvato).
   void setInitialTrack(List<List<double>> track) {
     _gpsTrack = List.from(track);
   }
 
+  /// Calcola la distanza tra due punti GPS usando la formula di Haversine.
   double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
     const double earthRadiusKm = 6371;
     final double dLat = _toRadians(lat2 - lat1);
@@ -120,6 +128,7 @@ class LocationService {
     return degrees * (3.14159265359 / 180);
   }
 
+  /// Calcola la distanza totale percorsa nel tracciato attuale.
   double getTotalDistance() {
     if (_gpsTrack.length < 2) return 0.0;
 

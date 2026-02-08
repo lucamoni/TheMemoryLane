@@ -1,285 +1,174 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import '../models/moment.dart';
 import 'package:intl/intl.dart';
 import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart';
-import '../services/location_service.dart';
+import '../models/moment.dart';
+import '../models/trip.dart';
+import '../services/database_service.dart';
+import 'package:provider/provider.dart';
 
+/// Widget che visualizza la timeline cronologica dei momenti di un viaggio.
 class TimelineWidget extends StatelessWidget {
-  final List<Moment> moments;
-  final double totalDistance;
-  final DateTime? startDate;
-  final DateTime? endDate;
-  final Function(Moment)? onEdit;
-  final Function(Moment)? onDelete;
-  final ScrollController? controller;
+  final Trip trip;
+  final VoidCallback? onMomentDeleted;
 
-  const TimelineWidget({
-    required this.moments,
-    required this.totalDistance,
-    required this.startDate,
-    required this.endDate,
-    this.onEdit,
-    this.onDelete,
-    this.controller,
-    super.key,
-  });
+  const TimelineWidget({super.key, required this.trip, this.onMomentDeleted});
 
   @override
   Widget build(BuildContext context) {
-    if (moments.isEmpty) {
-      return _buildEmptyState();
-    }
-
-    final sortedMoments = List<Moment>.from(moments)
+    // Ordina i momenti per timestamp (dal più vecchio al più recente per la timeline)
+    final sortedMoments = List<Moment>.from(trip.moments)
       ..sort(
         (a, b) => (a.timestamp ?? DateTime.now()).compareTo(
           b.timestamp ?? DateTime.now(),
         ),
       );
 
+    // Calcola le "pietre miliari" della distanza (es. ogni 5km o 10km)
+    final distanceMilestones = _calculateDistanceMilestones(trip.totalDistance);
+
     return ListView.builder(
-      controller: controller,
-      cacheExtent: 1500, // Pre-carica gli elementi per uno scrolling fluido
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
       physics: const BouncingScrollPhysics(),
-      itemCount:
-          _getTimelineItemCount(sortedMoments) + 2, // +2 per header e titolo
+      itemCount: sortedMoments.length + (distanceMilestones.isNotEmpty ? 1 : 0),
       itemBuilder: (context, index) {
-        if (index == 0) return RepaintBoundary(child: _buildHeader(context));
-        if (index == 1) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
-            child: Text(
-              'Timeline Narrativa',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                letterSpacing: -0.5,
-              ),
-            ),
-          );
+        if (index == 0 && distanceMilestones.isNotEmpty) {
+          return _buildStatsHeader(trip);
         }
 
-        final actualIndex = index - 2;
-        if (_isDistanceMilestone(actualIndex, sortedMoments)) {
-          return RepaintBoundary(
-            child: _buildDistanceMilestone(context, actualIndex, sortedMoments),
-          );
-        }
+        final momentIdx = distanceMilestones.isNotEmpty ? index - 1 : index;
+        final moment = sortedMoments[momentIdx];
+        final isLast = momentIdx == sortedMoments.length - 1;
 
-        final momentIndex = _getMomentIndex(actualIndex, sortedMoments);
-        final moment = sortedMoments[momentIndex];
-        final isLast = actualIndex == _getTimelineItemCount(sortedMoments) - 1;
-
-        double? distanceSinceLast;
-        if (momentIndex > 0) {
-          final prev = sortedMoments[momentIndex - 1];
-          if (moment.latitude != null &&
-              moment.longitude != null &&
-              prev.latitude != null &&
-              prev.longitude != null &&
-              moment.latitude != 0.0 &&
-              prev.latitude != 0.0) {
-            distanceSinceLast = LocationService.instance.calculateDistance(
-              prev.latitude!,
-              prev.longitude!,
-              moment.latitude!,
-              moment.longitude!,
-            );
-          }
-        }
-
-        return RepaintBoundary(
-          child: _buildTimelineItem(context, moment, isLast, distanceSinceLast),
-        );
+        return _buildTimelineItem(context, moment, isLast);
       },
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          children: [
-            Icon(
-              Icons.auto_stories_outlined,
-              size: 64,
-              color: Colors.indigo.withOpacity(0.3),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'La tua storia inizia qui...',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Aggiungi note o foto per popolare la timeline.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(BuildContext context) {
+  /// Header con le statistiche principali del viaggio.
+  Widget _buildStatsHeader(Trip trip) {
     return Container(
-      margin: const EdgeInsets.all(20),
-      padding: const EdgeInsets.all(24),
+      margin: const EdgeInsets.only(bottom: 32, top: 16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Theme.of(context).primaryColor, const Color(0xFF1B262C)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).primaryColor.withOpacity(0.3),
+            color: const Color(0xFF16697A).withOpacity(0.06),
             blurRadius: 20,
-            offset: const Offset(0, 10),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: Column(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildStatChip(
-                context,
-                Icons.route,
-                '${totalDistance.toStringAsFixed(1)} KM',
-                'Percorsi',
-              ),
-              _buildStatChip(
-                context,
-                Icons.auto_awesome,
-                '${moments.length}',
-                'Ricordi',
-              ),
-              _buildStatChip(
-                context,
-                Icons.timer_outlined,
-                _getDuration(),
-                'Tempo',
-              ),
-            ],
+          _buildStatItem(
+            Icons.route_rounded,
+            '${trip.totalDistance.toStringAsFixed(1)}',
+            'km totali',
+          ),
+          Container(width: 1, height: 40, color: Colors.grey.shade100),
+          _buildStatItem(
+            Icons.auto_awesome_rounded,
+            '${trip.moments.length}',
+            'momenti',
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatChip(
-    BuildContext context,
-    IconData icon,
-    String value,
-    String label,
-  ) {
+  Widget _buildStatItem(IconData icon, String value, String label) {
     return Column(
       children: [
-        Icon(icon, color: Colors.white, size: 24),
+        Icon(icon, color: const Color(0xFF82C0CC), size: 24),
         const SizedBox(height: 8),
         Text(
           value,
           style: const TextStyle(
-            color: Colors.white,
             fontWeight: FontWeight.bold,
             fontSize: 18,
+            color: Color(0xFF1B262C),
           ),
         ),
         Text(
           label,
-          style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey.shade500,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildTimelineItem(
-    BuildContext context,
-    Moment moment,
-    bool isLast,
-    double? distanceFromPrev,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+  Widget _buildTimelineItem(BuildContext context, Moment moment, bool isLast) {
+    return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildTimelinePath(context, moment, isLast, distanceFromPrev),
-          const SizedBox(width: 16),
+          // Indicatore della linea temporale
+          _buildTimelineIndicator(moment, isLast),
+          const SizedBox(width: 20),
+          // Card del momento
           Expanded(child: _buildMomentCard(context, moment)),
         ],
       ),
     );
   }
 
-  Widget _buildTimelinePath(
-    BuildContext context,
-    Moment moment,
-    bool isLast,
-    double? distanceFromPrev,
-  ) {
-    return SizedBox(
-      width: 40,
-      child: Column(
-        children: [
-          if (distanceFromPrev != null && distanceFromPrev > 0.1)
-            Container(
-              margin: const EdgeInsets.only(bottom: 4),
-              child: Text(
-                '+${distanceFromPrev.toStringAsFixed(1)}km',
-                style: const TextStyle(
-                  fontSize: 9,
-                  color: Colors.grey,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white,
-              border: Border.all(color: _getMomentColor(moment.type), width: 2),
-            ),
-            child: Icon(
-              _getMomentIcon(moment.type),
-              size: 16,
-              color: _getMomentColor(moment.type),
+  Widget _buildTimelineIndicator(Moment moment, bool isLast) {
+    return Column(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: _getMomentColor(moment.type!).withOpacity(0.15),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: _getMomentColor(moment.type!).withOpacity(0.3),
+              width: 2,
             ),
           ),
-          if (!isLast)
-            Container(
+          child: Icon(
+            _getMomentIcon(moment.type!),
+            color: _getMomentColor(moment.type!),
+            size: 18,
+          ),
+        ),
+        if (!isLast)
+          Expanded(
+            child: Container(
               width: 2,
-              height: moment.type == MomentType.photo ? 180 : 100,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [_getMomentColor(moment.type), Colors.grey.shade200],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
+                  colors: [
+                    _getMomentColor(moment.type!).withOpacity(0.5),
+                    Colors.grey.shade200,
+                  ],
                 ),
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
   Widget _buildMomentCard(BuildContext context, Moment moment) {
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 24),
+      margin: const EdgeInsets.only(bottom: 32),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -288,237 +177,140 @@ class TimelineWidget extends StatelessWidget {
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (moment.type == MomentType.photo && moment.content != null)
-              _buildPhotoContent(moment.content!),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        _formatTime(moment.timestamp),
-                        style: TextStyle(
-                          color: Theme.of(context).primaryColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const Spacer(),
-                      if (moment.latitude != null)
-                        const Icon(
-                          Icons.location_on,
-                          size: 14,
-                          color: Colors.grey,
-                        ),
-                      if (onEdit != null || onDelete != null)
-                        PopupMenuButton<String>(
-                          icon: const Icon(
-                            Icons.more_vert,
-                            size: 20,
-                            color: Colors.grey,
-                          ),
-                          padding: EdgeInsets.zero,
-                          onSelected: (value) {
-                            if (value == 'edit' && onEdit != null)
-                              onEdit!(moment);
-                            if (value == 'delete' && onDelete != null)
-                              onDelete!(moment);
-                          },
-                          itemBuilder: (context) => [
-                            if (onEdit != null)
-                              const PopupMenuItem(
-                                value: 'edit',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.edit_outlined, size: 18),
-                                    SizedBox(width: 8),
-                                    Text('Modifica'),
-                                  ],
-                                ),
-                              ),
-                            if (onDelete != null)
-                              const PopupMenuItem(
-                                value: 'delete',
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.delete_outline,
-                                      size: 18,
-                                      color: Colors.red,
-                                    ),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'Elimina',
-                                      style: TextStyle(color: Colors.red),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                    ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Intestazione della card (Ora e Titolo)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 12, 0),
+            child: Row(
+              children: [
+                Text(
+                  DateFormat(
+                    'HH:mm',
+                  ).format(moment.timestamp ?? DateTime.now()),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: _getMomentColor(moment.type!),
+                    fontSize: 13,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    moment.title!,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    moment.title ?? _getDefaultTitle(moment.type!),
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
-                      letterSpacing: -0.5,
                     ),
                   ),
-                  if (moment.type == MomentType.video)
-                    _buildVideoPreview(context, moment.content!)
-                  else if (moment.type == MomentType.audio)
-                    _buildAudioPlayer(moment.content!)
-                  else if (moment.content != null &&
-                      moment.type != MomentType.photo)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        _truncateContent(moment.content!),
-                        style: TextStyle(
-                          color: Colors.grey.shade700,
-                          height: 1.4,
-                        ),
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(
+                    Icons.more_horiz_rounded,
+                    color: Colors.grey,
+                    size: 20,
+                  ),
+                  onSelected: (val) {
+                    if (val == 'delete')
+                      _showDeleteDialog(context, moment, dbService);
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_outline_rounded,
+                            color: Colors.red,
+                            size: 18,
+                          ),
+                          SizedBox(width: 8),
+                          Text('Elimina', style: TextStyle(color: Colors.red)),
+                        ],
                       ),
                     ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPhotoContent(String path) {
-    return Image.file(
-      File(path),
-      height: 200,
-      width: double.infinity,
-      fit: BoxFit.cover,
-      cacheWidth:
-          300, // IMPORTANTE: Forza il caricamento di una miniatura per risparmiare RAM
-      errorBuilder: (_, __, ___) => Container(
-        height: 120,
-        color: Colors.grey.shade100,
-        child: const Icon(Icons.image_not_supported, color: Colors.grey),
-      ),
-    );
-  }
-
-  Widget _buildDistanceMilestone(
-    BuildContext context,
-    int index,
-    List<Moment> moments,
-  ) {
-    final momentIndex = _getMomentIndex(index, moments);
-    final progress = momentIndex / moments.length;
-    final partialDistance = totalDistance * progress;
-
-    return Padding(
-      padding: const EdgeInsets.only(left: 30, right: 20, bottom: 24),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.flag_rounded,
-                  size: 14,
-                  color: Colors.blueGrey,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${partialDistance.toStringAsFixed(1)} KM PERCORSI',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blueGrey,
-                    letterSpacing: 1,
-                  ),
+                  ],
                 ),
               ],
             ),
           ),
-          const Expanded(
-            child: Divider(indent: 8, color: Colors.blueGrey, thickness: 0.5),
+
+          // Contenuto specifico in base al tipo
+          if (moment.type == MomentType.photo && moment.content != null)
+            _buildPhotoPreview(moment.content!)
+          else if (moment.type == MomentType.video)
+            _buildVideoPreview(context, moment.content!)
+          else if (moment.type == MomentType.audio)
+            _buildAudioPlayer(moment.content!)
+          else if (moment.content != null && moment.type != MomentType.photo)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+              child: Text(
+                _truncateContent(moment.content!),
+                style: TextStyle(color: Colors.grey.shade700, height: 1.4),
+              ),
+            ),
+
+          // Descrizione aggiuntiva (se presente)
+          if (moment.description != null && moment.description!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Text(
+                moment.description!,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade500,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+
+          // Footer con posizione (aggiornato per usare moment.latitude/longitude se moment.location non esiste)
+          // Se la classe Moment ha location, usiamolo, altrimenti proviamo latitude/longitude.
+          // In base ai log precedenti, sembrava avere latitude/longitude.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.location_on_rounded,
+                  size: 12,
+                  color: Colors.grey.shade400,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Momento registrato in questa posizione',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade400),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  String _formatTime(DateTime? dateTime) {
-    if (dateTime == null) return '--:--';
-    return DateFormat('HH:mm - dd MMM').format(dateTime);
-  }
-
-  String _getDuration() {
-    if (startDate == null || endDate == null) return '0h';
-    final diff = endDate!.difference(startDate!);
-    if (diff.inDays > 0) return '${diff.inDays}d ${diff.inHours % 24}h';
-    return '${diff.inHours}h ${diff.inMinutes % 60}m';
-  }
-
-  String _truncateContent(String content) {
-    if (content.length <= 50) return content;
-    return '${content.substring(0, 50)}...';
-  }
-
-  Color _getMomentColor(MomentType? type) {
-    switch (type) {
-      case MomentType.note:
-        return const Color(0xFF16697A); // Deep Teal
-      case MomentType.photo:
-        return const Color(0xFFFFA62B); // Gold
-      case MomentType.audio:
-        return const Color(0xFF82C0CC); // Light Blue
-      case MomentType.video:
-        return Colors.redAccent;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getMomentIcon(MomentType? type) {
-    switch (type) {
-      case MomentType.note:
-        return Icons.edit_note;
-      case MomentType.photo:
-        return Icons.camera_alt;
-      case MomentType.audio:
-        return Icons.audiotrack_rounded;
-      case MomentType.video:
-        return Icons.videocam_rounded;
-      default:
-        return Icons.more_horiz;
-    }
+  Widget _buildPhotoPreview(String path) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      height: 200,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        image: DecorationImage(image: FileImage(File(path)), fit: BoxFit.cover),
+      ),
+    );
   }
 
   Widget _buildVideoPreview(BuildContext context, String path) {
     return GestureDetector(
-      onTap: () {
-        showDialog(
-          context: context,
-          builder: (context) => _VideoPlayerDialog(videoPath: path),
-        );
-      },
+      onTap: () => showDialog(
+        context: context,
+        builder: (_) => _VideoPlayerDialog(path: path),
+      ),
       child: Container(
         margin: const EdgeInsets.only(top: 12),
         height: 160,
@@ -554,31 +346,103 @@ class TimelineWidget extends StatelessWidget {
     return _AudioPlayerWidget(path: path);
   }
 
-  int _getTimelineItemCount(List<Moment> moments) {
-    if (moments.isEmpty) return 0;
-    final milestones = (moments.length / 3).floor();
-    return moments.length + milestones;
+  String _truncateContent(String content) {
+    if (content.length > 150) return '${content.substring(0, 147)}...';
+    return content;
   }
 
-  bool _isDistanceMilestone(int index, List<Moment> moments) {
-    return (index + 1) % 4 == 0;
+  IconData _getMomentIcon(MomentType type) {
+    switch (type) {
+      case MomentType.note:
+        return Icons.notes_rounded;
+      case MomentType.photo:
+        return Icons.camera_alt_rounded;
+      case MomentType.video:
+        return Icons.videocam_rounded;
+      case MomentType.audio:
+        return Icons.mic_rounded;
+    }
   }
 
-  int _getMomentIndex(int timelineIndex, List<Moment> moments) {
-    final milestonesBefore = (timelineIndex / 4).floor();
-    return timelineIndex - milestonesBefore;
+  Color _getMomentColor(MomentType type) {
+    switch (type) {
+      case MomentType.note:
+        return const Color(0xFF16697A);
+      case MomentType.photo:
+        return const Color(0xFFFFA62B);
+      case MomentType.video:
+        return Colors.redAccent;
+      case MomentType.audio:
+        return const Color(0xFF82C0CC);
+    }
+  }
+
+  String _getDefaultTitle(MomentType type) {
+    switch (type) {
+      case MomentType.note:
+        return 'Nota';
+      case MomentType.photo:
+        return 'Foto';
+      case MomentType.video:
+        return 'Video';
+      case MomentType.audio:
+        return 'Audio';
+    }
+  }
+
+  List<double> _calculateDistanceMilestones(double totalDistance) {
+    if (totalDistance < 5) return [];
+    List<double> milestones = [];
+    for (double i = 5; i <= totalDistance; i += 5) {
+      milestones.add(i);
+    }
+    return milestones;
+  }
+
+  void _showDeleteDialog(
+    BuildContext context,
+    Moment moment,
+    DatabaseService dbService,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Elimina momento'),
+        content: const Text('Sei sicuro di voler eliminare questo ricordo?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annulla'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              dbService.deleteMoment(moment.id!, trip.id!);
+              Navigator.pop(context);
+              if (onMomentDeleted != null) onMomentDeleted!();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade400,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Elimina'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
+/// Widget interno per la riproduzione dei file audio registrati.
 class _AudioPlayerWidget extends StatefulWidget {
   final String path;
   const _AudioPlayerWidget({required this.path});
+
   @override
   State<_AudioPlayerWidget> createState() => _AudioPlayerWidgetState();
 }
 
 class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
-  final player = AudioPlayer();
+  late AudioPlayer player;
   bool isPlaying = false;
   Duration duration = Duration.zero;
   Duration position = Duration.zero;
@@ -586,8 +450,9 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
   @override
   void initState() {
     super.initState();
-    player.onPositionChanged.listen((p) => setState(() => position = p));
+    player = AudioPlayer();
     player.onDurationChanged.listen((d) => setState(() => duration = d));
+    player.onPositionChanged.listen((p) => setState(() => position = p));
     player.onPlayerComplete.listen((_) => setState(() => isPlaying = false));
   }
 
@@ -595,6 +460,13 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
   void dispose() {
     player.dispose();
     super.dispose();
+  }
+
+  String _formatDuration(Duration d) {
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    String twoDigitMinutes = twoDigits(d.inMinutes.remainder(60));
+    String twoDigitSeconds = twoDigits(d.inSeconds.remainder(60));
+    return "$twoDigitMinutes:$twoDigitSeconds";
   }
 
   @override
@@ -679,16 +551,12 @@ class _AudioPlayerWidgetState extends State<_AudioPlayerWidget> {
       ),
     );
   }
-
-  String _formatDuration(Duration d) {
-    String twoDigits(int n) => n.toString().padLeft(2, "0");
-    return "${twoDigits(d.inMinutes.remainder(60))}:${twoDigits(d.inSeconds.remainder(60))}";
-  }
 }
 
+/// Dialog per la riproduzione dei file video a schermo intero o quasi.
 class _VideoPlayerDialog extends StatefulWidget {
-  final String videoPath;
-  const _VideoPlayerDialog({required this.videoPath});
+  final String path;
+  const _VideoPlayerDialog({required this.path});
 
   @override
   State<_VideoPlayerDialog> createState() => _VideoPlayerDialogState();
@@ -701,7 +569,7 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.file(File(widget.videoPath))
+    _controller = VideoPlayerController.file(File(widget.path))
       ..initialize().then((_) {
         setState(() => _initialized = true);
         _controller.play();

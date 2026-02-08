@@ -19,6 +19,7 @@ class DatabaseService {
   late Box<Moment> _momentsBox;
   late Box<TripFolder> _foldersBox;
 
+  /// Inizializza i box di Hive per la persistenza dei dati.
   Future<void> init() async {
     try {
       _tripsBox = await Hive.openBox<Trip>('trips');
@@ -27,6 +28,7 @@ class DatabaseService {
 
       // Verifica se i dati esistenti sono validi
       if (_tripsBox.isNotEmpty) {
+        // Forza il caricamento dei momenti del primo viaggio per validazione
         final _ = _tripsBox.values.first.moments;
       }
 
@@ -37,30 +39,25 @@ class DatabaseService {
         }
       }
     } catch (e) {
-      print('Hive error detected, attempting to clear disk and retry: $e');
+      // In caso di errore critico (es. corruzione file), tenta di resettare i box
       try {
         await Hive.deleteBoxFromDisk('trips');
-      } catch (de) {
-        print('Could not delete trips box from disk: $de');
-      }
+      } catch (_) {}
       try {
         await Hive.deleteBoxFromDisk('moments');
-      } catch (de) {
-        print('Could not delete moments box from disk: $de');
-      }
+      } catch (_) {}
       try {
         await Hive.deleteBoxFromDisk('folders');
-      } catch (de) {
-        print('Could not delete folders box from disk: $de');
-      }
+      } catch (_) {}
 
+      // Riprova l'apertura dopo la pulizia
       _tripsBox = await Hive.openBox<Trip>('trips');
       _momentsBox = await Hive.openBox<Moment>('moments');
       _foldersBox = await Hive.openBox<TripFolder>('folders');
     }
   }
 
-  // Trip methods
+  // Metodi per i Viaggi (Trip)
   Future<void> saveTrip(Trip trip) async {
     await _tripsBox.put(trip.id, trip);
   }
@@ -75,7 +72,7 @@ class DatabaseService {
 
   Future<void> deleteTrip(String tripId) async {
     await _tripsBox.delete(tripId);
-    // Elimina anche i momenti associati
+    // Elimina anche tutti i momenti associati a questo viaggio
     final momentsToDelete = _momentsBox.values
         .where((moment) => moment.tripId == tripId)
         .toList();
@@ -84,7 +81,7 @@ class DatabaseService {
     }
   }
 
-  // Folder methods
+  // Metodi per le Cartelle (Folder)
   Future<void> saveFolder(TripFolder folder) async {
     await _foldersBox.put(folder.id, folder);
   }
@@ -95,7 +92,7 @@ class DatabaseService {
 
   Future<void> deleteFolder(String folderId) async {
     await _foldersBox.delete(folderId);
-    // Rimuovi il folderId dai viaggi associati
+    // Rimuovi il riferimento alla cartella dai viaggi associati
     final tripsInFolder = _tripsBox.values
         .where((trip) => trip.folderId == folderId)
         .toList();
@@ -104,12 +101,12 @@ class DatabaseService {
     }
   }
 
-  // Moment methods
+  // Metodi per i Momenti (Moment)
   Future<void> saveMoment(Moment moment) async {
     if (moment.id == null) return;
     await _momentsBox.put(moment.id, moment);
 
-    // Aggiorna il viaggio con il nuovo momento
+    // Aggiorna la lista dei momenti nel rispettivo viaggio per coerenza Hive
     if (moment.tripId != null) {
       final trip = await getTrip(moment.tripId!);
       if (trip != null) {
@@ -135,10 +132,20 @@ class DatabaseService {
         .toList();
   }
 
-  Future<void> deleteMoment(String momentId) async {
+  Future<void> deleteMoment(String momentId, String tripId) async {
     await _momentsBox.delete(momentId);
+
+    // Aggiorna anche la lista dei momenti nel viaggio per coerenza
+    final trip = await getTrip(tripId);
+    if (trip != null) {
+      final updatedMoments = trip.moments
+          .where((m) => m.id != momentId)
+          .toList();
+      await saveTrip(trip.copyWith(moments: updatedMoments));
+    }
   }
 
+  /// Cancella tutti i dati salvati (Reset totale)
   Future<void> clear() async {
     await _tripsBox.clear();
     await _momentsBox.clear();

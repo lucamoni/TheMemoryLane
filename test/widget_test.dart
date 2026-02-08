@@ -31,7 +31,7 @@ class MockDatabaseService implements DatabaseService {
   Future<void> saveMoment(Moment moment) async {}
 
   @override
-  Future<void> deleteMoment(String momentId) async {}
+  Future<void> deleteMoment(String momentId, String tripId) async {}
 
   @override
   Future<void> clear() async {}

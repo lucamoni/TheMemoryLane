@@ -7,7 +7,6 @@ import '../models/trip.dart';
 import '../models/moment.dart';
 import '../services/location_service.dart';
 import '../services/database_service.dart';
-import '../services/geofencing_manager.dart';
 import '../widgets/photo_heat_map_widget.dart';
 import '../widgets/timeline_widget.dart';
 import 'package:intl/intl.dart';
@@ -17,6 +16,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'dart:async';
 
+/// Pagina dei dettagli di un viaggio.
+/// Visualizza la timeline dei ricordi e la mappa di calore.
+/// Permette anche di registrare nuovi momenti se il viaggio è attivo.
 class TripDetailPage extends StatefulWidget {
   final Trip trip;
   const TripDetailPage({required this.trip, super.key});
@@ -45,6 +47,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     }
   }
 
+  /// Riprende il tracciamento GPS se il viaggio è ancora attivo all'apertura della pagina.
   void _resumeTracking() async {
     final loc = Provider.of<LocationService>(context, listen: false);
     try {
@@ -54,10 +57,11 @@ class _TripDetailPageState extends State<TripDetailPage>
       }
       _startTrackingTimer();
     } catch (e) {
-      debugPrint('Error resuming tracking: $e');
+      debugPrint('Errore nel riprendere il tracciamento: $e');
     }
   }
 
+  /// Avvia un timer per sincronizzare periodicamente il percorso GPS con il database.
   void _startTrackingTimer() {
     _trackingTimer?.cancel();
     _trackingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
@@ -69,6 +73,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     });
   }
 
+  /// Sincronizza i dati di tracciamento correnti nel modello e nel database.
   void _syncTracking() {
     final loc = Provider.of<LocationService>(context, listen: false);
     final db = Provider.of<DatabaseService>(context, listen: false);
@@ -116,6 +121,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     );
   }
 
+  /// AppBar con immagine di copertina e informazioni principali del viaggio.
   Widget _buildSliverAppBar(BuildContext context) {
     return SliverAppBar(
       expandedHeight: 240,
@@ -131,6 +137,8 @@ class _TripDetailPageState extends State<TripDetailPage>
                     File(_currentTrip.coverPath!),
                     fit: BoxFit.cover,
                     cacheHeight: 400,
+                    errorBuilder: (context, error, stackTrace) =>
+                        _buildDefaultGradientBackground(context),
                   )
                 : _currentTrip.moments.any((m) => m.type == MomentType.photo)
                 ? Image.file(
@@ -141,19 +149,10 @@ class _TripDetailPageState extends State<TripDetailPage>
                     ),
                     fit: BoxFit.cover,
                     cacheHeight: 400,
+                    errorBuilder: (context, error, stackTrace) =>
+                        _buildDefaultGradientBackground(context),
                   )
-                : Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Theme.of(context).primaryColor,
-                          const Color(0xFF1B262C),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
-                  ),
+                : _buildDefaultGradientBackground(context),
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -184,6 +183,7 @@ class _TripDetailPageState extends State<TripDetailPage>
                   Text(
                     DateFormat(
                       'dd MMMM yyyy',
+                      'it_IT',
                     ).format(_currentTrip.startDate ?? DateTime.now()),
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.8),
@@ -211,6 +211,19 @@ class _TripDetailPageState extends State<TripDetailPage>
     );
   }
 
+  Widget _buildDefaultGradientBackground(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Theme.of(context).primaryColor, const Color(0xFF1B262C)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+    );
+  }
+
+  /// Permette all'utente di selezionare una nuova immagine di copertina dalla galleria.
   Future<void> _changeCoverImage() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
@@ -222,6 +235,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     }
   }
 
+  /// TabBar per navigare tra Timeline e Heat Map.
   Widget _buildTabBar(BuildContext context) {
     return Container(
       color: Colors.white,
@@ -239,6 +253,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     );
   }
 
+  /// Barra inferiore visibile solo durante la registrazione di un viaggio attivo.
   Widget _buildActiveTripDock() {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
@@ -255,7 +270,6 @@ class _TripDetailPageState extends State<TripDetailPage>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Termina a sinistra
           TextButton.icon(
             onPressed: () => _stopRecording(context),
             icon: const Icon(
@@ -268,8 +282,6 @@ class _TripDetailPageState extends State<TripDetailPage>
               style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
             ),
           ),
-
-          // Stato al centro
           const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -286,8 +298,6 @@ class _TripDetailPageState extends State<TripDetailPage>
               ),
             ],
           ),
-
-          // Momento a destra
           ElevatedButton.icon(
             onPressed: () => _showMomentSelector(),
             icon: const Icon(Icons.add_circle_outline, size: 18),
@@ -307,24 +317,29 @@ class _TripDetailPageState extends State<TripDetailPage>
     );
   }
 
+  /// Costruisce il widget Timeline per il primo tab.
   Widget _buildTimelineTab() {
     return TimelineWidget(
-      moments: _currentTrip.moments,
-      totalDistance: _currentTrip.totalDistance,
-      startDate: _currentTrip.startDate,
-      endDate: _currentTrip.endDate,
-      onEdit: (moment) => _editMoment(moment),
-      onDelete: (moment) => _deleteMoment(moment),
-      controller: _timelineScrollController,
+      trip: _currentTrip,
+      onMomentDeleted: () {
+        setState(() {
+          // Ricarichiamo i dati aggiornati
+          final db = Provider.of<DatabaseService>(context, listen: false);
+          final updatedTrip = db.getAllTrips().firstWhere(
+            (t) => t.id == _currentTrip.id,
+          );
+          _currentTrip = updatedTrip;
+        });
+      },
     );
   }
 
+  /// Costruisce il widget Heat Map per il secondo tab.
   Widget _buildHeatMapTab() {
     return PhotoHeatMapWidget(
       trip: _currentTrip,
       onMomentSelected: (moment) {
         _tabController.animateTo(0);
-        // Ritardo per permettere al TabView di cambiare pagina prima di scorrere
         Future.delayed(const Duration(milliseconds: 300), () {
           _jumpToMoment(moment);
         });
@@ -332,10 +347,10 @@ class _TripDetailPageState extends State<TripDetailPage>
     );
   }
 
+  /// Effettua lo scroll automatico fino a un momento specifico nella timeline.
   void _jumpToMoment(Moment moment) {
     if (!_timelineScrollController.hasClients) return;
 
-    // Ordiniamo i momenti come nella Timeline
     final sortedMoments = List<Moment>.from(_currentTrip.moments)
       ..sort(
         (a, b) => (a.timestamp ?? DateTime.now()).compareTo(
@@ -346,29 +361,8 @@ class _TripDetailPageState extends State<TripDetailPage>
     final momentIndex = sortedMoments.indexWhere((m) => m.id == moment.id);
     if (momentIndex == -1) return;
 
-    // Calcoliamo l'indice nel ListView (Header + Titolo + Milestones)
-    final milestonesBefore = (momentIndex / 3).floor();
-    final listIndex =
-        momentIndex + milestonesBefore + 2; // +2 per header e titolo
-
-    // Stima dell'offset (approssimativa perché le card variano in altezza)
-    // Usiamo jumpTo prima e poi animateTo per precisione se possibile, o solo animateTo
-    double offset = 0;
-    for (int i = 0; i < listIndex; i++) {
-      if (i == 0)
-        offset += 300; // Header circa 300
-      else if (i == 1)
-        offset += 60; // Titolo circa 60
-      else {
-        final actualIdx = i - 2;
-        if ((actualIdx + 1) % 4 == 0) {
-          offset += 60; // Milestone circa 60
-        } else {
-          // Moment card: stima media
-          offset += 250;
-        }
-      }
-    }
+    // Stima offset considerando header e card
+    double offset = 300.0 + (momentIndex * 280.0);
 
     _timelineScrollController.animateTo(
       offset,
@@ -377,6 +371,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     );
   }
 
+  /// Dialog modale per scegliere il tipo di momento da aggiungere.
   void _showMomentSelector() {
     showModalBottomSheet(
       context: context,
@@ -431,6 +426,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     );
   }
 
+  /// Registra un nuovo video e lo salva come momento.
   Future<void> _takeVideo() async {
     final XFile? video = await _picker.pickVideo(source: ImageSource.camera);
     if (video != null) {
@@ -490,6 +486,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     }
   }
 
+  /// Mostra il dialog per la registrazione audio.
   void _showAudioRecorder() {
     showDialog(
       context: context,
@@ -512,6 +509,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     );
   }
 
+  /// Permette di aggiungere una nota testuale o dettata.
   void _addNote() {
     final controller = TextEditingController();
     bool isListening = false;
@@ -603,6 +601,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     );
   }
 
+  /// Widget per visualizzare un'azione rapida nel selettore di momenti.
   Widget _buildMomentAction(
     IconData icon,
     String label,
@@ -634,6 +633,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     );
   }
 
+  /// Scatta una foto e la salva come momento.
   Future<void> _takePhoto() async {
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
     if (photo != null) {
@@ -693,6 +693,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     }
   }
 
+  /// Salva il momento nel database e aggiorna lo stato locale.
   void _saveMoment(
     MomentType type,
     String content, {
@@ -722,216 +723,108 @@ class _TripDetailPageState extends State<TripDetailPage>
       } else {
         _currentTrip.moments.add(moment);
       }
-      _currentTrip = _currentTrip.copyWith(moments: _currentTrip.moments);
+      _currentTrip = _currentTrip.copyWith(
+        moments: List.from(_currentTrip.moments),
+      );
     });
   }
 
-  void _editMoment(Moment moment) {
-    if (moment.type == MomentType.note) {
-      final controller = TextEditingController(text: moment.content);
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Modifica Nota'),
-          content: TextField(
-            controller: controller,
-            maxLines: 4,
-            decoration: const InputDecoration(border: OutlineInputBorder()),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annulla'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                _saveMoment(
-                  moment.type!,
-                  controller.text,
-                  lat: moment.latitude,
-                  lng: moment.longitude,
-                  title: moment.title,
-                  id: moment.id,
-                );
-                Navigator.pop(context);
-              },
-              child: const Text('Salva'),
-            ),
-          ],
-        ),
-      );
-    } else {
-      // Per foto/video/audio permettiamo solo di modificare il titolo per ora
-      final controller = TextEditingController(text: moment.title);
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Rinomina Momento'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(labelText: 'Titolo'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annulla'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                _saveMoment(
-                  moment.type!,
-                  moment.content!,
-                  lat: moment.latitude,
-                  lng: moment.longitude,
-                  title: controller.text,
-                  description: moment.description,
-                  id: moment.id,
-                );
-                Navigator.pop(context);
-              },
-              child: const Text('Salva'),
-            ),
-          ],
-        ),
-      );
-    }
-  }
-
-  void _deleteMoment(Moment moment) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Elimina Momento'),
-        content: const Text('Sei sicuro di voler eliminare questo ricordo?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Annulla'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final db = Provider.of<DatabaseService>(context, listen: false);
-              await db.deleteMoment(moment.id!);
-              setState(() {
-                _currentTrip.moments.removeWhere((m) => m.id == moment.id);
-                _currentTrip = _currentTrip.copyWith(
-                  moments: _currentTrip.moments,
-                );
-              });
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Elimina'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _stopRecording(BuildContext context) async {
+  /// Ferma la registrazione del viaggio attivo.
+  void _stopRecording(BuildContext context) async {
     final loc = Provider.of<LocationService>(context, listen: false);
     final db = Provider.of<DatabaseService>(context, listen: false);
-    await loc.stopTracking();
 
-    setState(() {
-      _currentTrip = _currentTrip.copyWith(
-        isActive: false,
-        endDate: DateTime.now(),
-        gpsTrack: loc.getTrack(),
-        totalDistance: loc.getTotalDistance(),
-      );
-    });
-    await db.saveTrip(_currentTrip);
+    bool confirm =
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Termina Viaggio'),
+            content: const Text(
+              'Sei sicuro di voler fermare la registrazione? Non potrai aggiungere altri momenti automatici a questo viaggio.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Annulla'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Termina'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
 
-    if (mounted) {
-      _showGeofencePrompt(
-        loc.getLastLocation()?.latitude,
-        loc.getLastLocation()?.longitude,
-      );
+    if (confirm) {
+      await loc.stopTracking();
+      _trackingTimer?.cancel();
+      setState(() {
+        _currentTrip = _currentTrip.copyWith(
+          isActive: false,
+          endDate: DateTime.now(),
+          gpsTrack: loc.getTrack(),
+          totalDistance: loc.getTotalDistance(),
+        );
+      });
+      await db.saveTrip(_currentTrip);
     }
   }
 
-  void _showGeofencePrompt(double? lat, double? lng) {
-    if (lat == null || lng == null) return;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Luogo del Cuore?'),
-        content: const Text(
-          'Vuoi salvare questo punto per ricevere notifiche quando ci tornerai in futuro?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('No'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _addGeofence(lat, lng);
-            },
-            child: const Text('Sì, salva'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _addGeofence(double lat, double lng) async {
-    final gm = Provider.of<GeofencingManager>(context, listen: false);
-    await gm.addGeofence(
-      id: 'Geofence_${DateTime.now()}',
-      latitude: lat,
-      longitude: lng,
-      radiusInMeter: 200,
-    );
-    if (mounted)
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Luogo del Cuore aggiunto!')),
-      );
-  }
-
+  /// Badge grafico rappresentante il tipo di viaggio.
   Widget _getTripTypeBadge(TripType type) {
+    IconData icon;
     String label;
     Color color;
+
     switch (type) {
       case TripType.localTrip:
-        label = 'LOCAL';
-        color = const Color(0xFF10B981);
+        icon = Icons.directions_walk_rounded;
+        label = 'Passeggiata';
+        color = Colors.green;
         break;
       case TripType.dayTrip:
-        label = 'DAY TRIP';
-        color = const Color(0xFFF59E0B);
+        icon = Icons.explore_rounded;
+        label = 'Gita';
+        color = Colors.orange;
         break;
       case TripType.multiDayTrip:
-        label = 'VACATION';
-        color = const Color(0xFF3B82F6);
+        icon = Icons.flight_takeoff_rounded;
+        label = 'Viaggio';
+        color = Colors.blue;
         break;
     }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color,
+        color: color.withOpacity(0.2),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
+/// Dialog per la registrazione audio integrato nella pagina dei dettagli.
 class _AudioRecorderDialog extends StatefulWidget {
   final Function(String) onSaved;
   const _AudioRecorderDialog({required this.onSaved});
+
   @override
   State<_AudioRecorderDialog> createState() => _AudioRecorderDialogState();
 }
@@ -939,6 +832,7 @@ class _AudioRecorderDialog extends StatefulWidget {
 class _AudioRecorderDialogState extends State<_AudioRecorderDialog> {
   final _audioRecorder = record.AudioRecorder();
   bool _isRecording = false;
+  String? _audioPath;
 
   @override
   void dispose() {
@@ -946,72 +840,54 @@ class _AudioRecorderDialogState extends State<_AudioRecorderDialog> {
     super.dispose();
   }
 
-  Future<void> _start() async {
-    try {
-      if (await _audioRecorder.hasPermission()) {
-        final dir = await getApplicationDocumentsDirectory();
-        final path = p.join(
-          dir.path,
-          'audio_${DateTime.now().millisecondsSinceEpoch}.m4a',
-        );
-        await _audioRecorder.start(const record.RecordConfig(), path: path);
-        setState(() => _isRecording = true);
-      }
-    } catch (e) {
-      debugPrint('Error: $e');
-    }
-  }
-
-  Future<void> _stop() async {
-    final path = await _audioRecorder.stop();
-    setState(() => _isRecording = false);
-    if (path != null) {
-      widget.onSaved(path);
-      Navigator.pop(context);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       title: const Text('Registra Audio'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 20),
-            GestureDetector(
-              onTap: _isRecording ? _stop : _start,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.all(30),
-                decoration: BoxDecoration(
-                  color: _isRecording
-                      ? Colors.red.withOpacity(0.1)
-                      : Colors.blue.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: _isRecording ? Colors.red : Colors.blue,
-                    width: 3,
-                  ),
-                ),
-                child: Icon(
-                  _isRecording ? Icons.stop_rounded : Icons.mic_rounded,
-                  size: 48,
-                  color: _isRecording ? Colors.red : Colors.blue,
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(_isRecording ? 'Registrazione...' : 'Tocca per registrare'),
-          ],
-        ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.mic_rounded, size: 48, color: Color(0xFF82C0CC)),
+          const SizedBox(height: 16),
+          Text(
+            _isRecording ? 'Registrazione in corso...' : 'Pronto a registrare',
+          ),
+        ],
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('Annulla'),
+        ),
+        ElevatedButton(
+          onPressed: () async {
+            if (!_isRecording) {
+              if (await _audioRecorder.hasPermission()) {
+                final directory = await getApplicationDocumentsDirectory();
+                _audioPath = p.join(
+                  directory.path,
+                  'audio_${DateTime.now().millisecondsSinceEpoch}.m4a',
+                );
+                await _audioRecorder.start(
+                  const record.RecordConfig(),
+                  path: _audioPath!,
+                );
+                setState(() => _isRecording = true);
+              }
+            } else {
+              final path = await _audioRecorder.stop();
+              if (path != null) {
+                widget.onSaved(path);
+              }
+              Navigator.pop(context);
+            }
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _isRecording
+                ? Colors.red
+                : const Color(0xFF16697A),
+          ),
+          child: Text(_isRecording ? 'Ferma' : 'Inizia'),
         ),
       ],
     );

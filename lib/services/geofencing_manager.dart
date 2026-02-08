@@ -1,6 +1,7 @@
 import 'package:geofence_service/geofence_service.dart';
 import 'notification_service.dart';
 
+/// Manager per la gestione del Geofencing (Luoghi del Cuore).
 class GeofencingManager {
   static final GeofencingManager _instance = GeofencingManager._internal();
 
@@ -16,11 +17,12 @@ class GeofencingManager {
   final GeofenceService geofenceService = GeofenceService.instance;
   final List<Geofence> _geofences = [];
 
+  /// Inizializza il servizio di geofencing.
   Future<void> init() async {
-    // Inizializza il servizio di geofencing
     await geofenceService.start();
   }
 
+  /// Aggiunge un nuovo geofence per un Luogo del Cuore.
   Future<void> addGeofence({
     required String id,
     required double latitude,
@@ -35,36 +37,42 @@ class GeofencingManager {
     );
 
     _geofences.add(geofence);
-    // Ricrea tutta la lista di geofences
+
+    // Riavvia il servizio per registrare le nuove zone
     await geofenceService.stop();
     await geofenceService.start();
 
+    // Notifica l'utente del completamento
     NotificationService.instance.showNotification(
-      title: 'Geofence Aggiunto',
-      body: 'Area aggiunta: $id',
+      title: 'Luogo del Cuore Aggiunto',
+      body: 'La zona "$id" è ora monitorata',
     );
   }
 
+  /// Rimuove un geofence tramite ID.
   Future<void> removeGeofence(String id) async {
     _geofences.removeWhere((g) => g.id == id);
     await geofenceService.stop();
     await geofenceService.start();
   }
 
+  /// Avvia il monitoraggio delle zone.
   Future<void> startMonitoring() async {
     await geofenceService.start();
   }
 
+  /// Interrompe il monitoraggio delle zone.
   Future<void> stopMonitoring() async {
     await geofenceService.stop();
   }
 
+  /// Restituisce la lista attuale delle zone monitorate.
   List<Geofence> getGeofences() {
     return List.from(_geofences);
   }
 
+  /// Pulisce tutte le zone monitorate.
   void clearGeofences() {
     _geofences.clear();
   }
 }
-

@@ -3,16 +3,18 @@ import 'moment.dart';
 
 part 'trip.g.dart';
 
+/// Classificazione delle tipologie di viaggio per una migliore organizzazione.
 @HiveType(typeId: 3)
 enum TripType {
   @HiveField(0)
-  localTrip, // Brevi spostamenti, passeggiate
+  localTrip, // Spostamenti urbani, passeggiate vicino casa
   @HiveField(1)
-  dayTrip, // Gite di un giorno
+  dayTrip, // Gite fuori porta di una giornata
   @HiveField(2)
-  multiDayTrip, // Vacanze di più giorni
+  multiDayTrip, // Viaggi lunghi, vacanze di più giorni
 }
 
+/// Modello principale che rappresenta un'avventura o un viaggio.
 @HiveType(typeId: 0)
 class Trip {
   @HiveField(0)
@@ -34,22 +36,22 @@ class Trip {
   final List<Moment> moments;
 
   @HiveField(6)
-  final List<List<double>> gpsTrack; // Lista di [lat, lng]
+  final List<List<double>> gpsTrack; // Storico dei punti GPS [latitudine, longitudine]
 
   @HiveField(7)
-  final double totalDistance; // in km
+  final double totalDistance; // Distanza cumulativa in chilometri
 
   @HiveField(8)
-  final bool isActive;
+  final bool isActive; // Indica se il viaggio è attualmente in fase di registrazione
 
   @HiveField(9)
   final TripType tripType;
 
   @HiveField(10)
-  final String? folderId;
+  final String? folderId; // ID della cartella di appartenenza (opzionale)
 
   @HiveField(11)
-  final String? coverPath;
+  final String? coverPath; // Percorso dell'immagine di copertina personalizzata
 
   Trip({
     required this.id,

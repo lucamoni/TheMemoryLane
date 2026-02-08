@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import '../widgets/add_geofence_sheet.dart';
 
+/// Pagina per la gestione dei "Luoghi del Cuore" (Geofence).
+/// Permette di visualizzare la lista dei luoghi salvati e la loro posizione su mappa.
 class GeofencesPage extends StatefulWidget {
   const GeofencesPage({super.key});
 
@@ -32,6 +34,7 @@ class _GeofencesPageState extends State<GeofencesPage>
 
   @override
   Widget build(BuildContext context) {
+    // Il GeofencingManager fornisce lo stato dei luoghi salvati (geofences)
     final geofencingManager = Provider.of<GeofencingManager>(context);
     final geofences = geofencingManager.getGeofences();
 
@@ -54,11 +57,11 @@ class _GeofencesPageState extends State<GeofencesPage>
       body: TabBarView(
         controller: _tabController,
         children: [
-          // Tab Lista
+          // Visualizzazione a lista
           geofences.isEmpty
               ? _buildEmptyState()
               : _buildGeofencesList(geofences, geofencingManager),
-          // Tab Mappa
+          // Visualizzazione su mappa
           _buildGeofencesMap(geofences),
         ],
       ),
@@ -71,6 +74,7 @@ class _GeofencesPageState extends State<GeofencesPage>
     );
   }
 
+  /// Stato vuoto mostrato quando non ci sono luoghi salvati.
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -90,7 +94,7 @@ class _GeofencesPageState extends State<GeofencesPage>
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 40),
             child: Text(
-              'Salva i posti che ami per ricevere una notifica quando ci passi vicino.',
+              'Salva i posti che ami per ricevere una notifica quando ci passi vicino durante i tuoi viaggi.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey, fontSize: 13),
             ),
@@ -100,6 +104,7 @@ class _GeofencesPageState extends State<GeofencesPage>
     );
   }
 
+  /// Costruisce la lista scrollabile dei Luoghi del Cuore.
   Widget _buildGeofencesList(
     List<dynamic> geofences,
     GeofencingManager manager,
@@ -160,6 +165,7 @@ class _GeofencesPageState extends State<GeofencesPage>
     );
   }
 
+  /// Costruisce la mappa con i marker e i cerchi dei raggio d'azione per ogni geofence.
   Widget _buildGeofencesMap(List<dynamic> geofences) {
     final markers = geofences.map((gf) {
       return Marker(
@@ -183,7 +189,7 @@ class _GeofencesPageState extends State<GeofencesPage>
 
     return GoogleMap(
       initialCameraPosition: const CameraPosition(
-        target: LatLng(41.9028, 12.4964), // Default su Roma
+        target: LatLng(41.9028, 12.4964), // Default su Roma se non ci sono dati
         zoom: 5,
       ),
       myLocationEnabled: true,
@@ -193,7 +199,6 @@ class _GeofencesPageState extends State<GeofencesPage>
       onMapCreated: (controller) {
         _mapController = controller;
         if (geofences.isNotEmpty) {
-          // Fit bounds to show all geofences
           _fitBounds(geofences);
         }
       },
@@ -203,6 +208,7 @@ class _GeofencesPageState extends State<GeofencesPage>
     );
   }
 
+  /// Adatta la visuale della mappa per includere tutti i geofence.
   void _fitBounds(List<dynamic> geofences) {
     if (geofences.isEmpty) return;
     double minLat = geofences.first.latitude;
@@ -223,11 +229,12 @@ class _GeofencesPageState extends State<GeofencesPage>
           southwest: LatLng(minLat, minLng),
           northeast: LatLng(maxLat, maxLng),
         ),
-        50, // padding
+        50,
       ),
     );
   }
 
+  /// Mostra il foglio modale per aggiungere un nuovo Luogo del Cuore.
   void _showAddGeofenceSheet(GeofencingManager manager) {
     showModalBottomSheet(
       context: context,
@@ -237,6 +244,7 @@ class _GeofencesPageState extends State<GeofencesPage>
     );
   }
 
+  /// Dialog di conferma per l'eliminazione di un geofence.
   void _deleteGeofence(
     BuildContext context,
     String id,
@@ -245,7 +253,7 @@ class _GeofencesPageState extends State<GeofencesPage>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Elimina'),
+        title: const Text('Elimina Luogo'),
         content: const Text('Rimuovere questo luogo dai tuoi preferiti?'),
         actions: [
           TextButton(

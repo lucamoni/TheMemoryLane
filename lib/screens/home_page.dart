@@ -14,6 +14,7 @@ import 'package:intl/intl.dart';
 import '../models/trip_folder.dart';
 import 'package:uuid/uuid.dart';
 
+/// Pagina principale dell'applicazione che mostra la lista dei viaggi e delle cartelle.
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -23,6 +24,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   String? _selectedFolderId;
+  TripType? _selectedType;
 
   @override
   Widget build(BuildContext context) {
@@ -40,16 +42,22 @@ class _HomePageState extends State<HomePage> {
               final allTrips = tripBox.values.toList();
               final folders = folderBox.values.toList();
 
+              // Stato vuoto se non ci sono viaggi né cartelle
               if (allTrips.isEmpty && folders.isEmpty)
                 return _buildEmptyState();
 
-              // Ottimizzazione: Usiamo dati pre-filtrati e ordinati
-              final filteredTrips = _selectedFolderId == null
-                  ? allTrips
-                  : allTrips
-                        .where((t) => t.folderId == _selectedFolderId)
-                        .toList();
+              // Filtra i viaggi in base alla cartella selezionata
+              // Filtra i viaggi in base alla cartella e al tipo selezionato
+              final filteredTrips = allTrips.where((t) {
+                final folderMatch =
+                    _selectedFolderId == null ||
+                    t.folderId == _selectedFolderId;
+                final typeMatch =
+                    _selectedType == null || t.tripType == _selectedType;
+                return folderMatch && typeMatch;
+              }).toList();
 
+              // Ordina per data decrescente (i più recenti in alto)
               filteredTrips.sort(
                 (a, b) => (b.startDate ?? DateTime.now()).compareTo(
                   a.startDate ?? DateTime.now(),
@@ -70,7 +78,7 @@ class _HomePageState extends State<HomePage> {
                 physics: const BouncingScrollPhysics(),
                 slivers: [
                   SliverToBoxAdapter(
-                    child: _buildFolderBar(folders, dbService),
+                    child: _buildFilterBar(folders, dbService),
                   ),
                   if (activeTrip != null)
                     SliverPadding(
@@ -128,6 +136,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildFilterBar(List<TripFolder> folders, DatabaseService dbService) {
+    return Column(
+      children: [_buildFolderBar(folders, dbService), _buildTypeFilterBar()],
+    );
+  }
+
   Widget _buildFolderBar(List<TripFolder> folders, DatabaseService dbService) {
     return Container(
       height: 60,
@@ -164,6 +178,68 @@ class _HomePageState extends State<HomePage> {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildTypeFilterBar() {
+    return Container(
+      height: 40,
+      margin: const EdgeInsets.only(top: 8),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        children: [
+          _buildTypeChip(null, 'Ogni Tipo', Icons.filter_list_rounded),
+          const SizedBox(width: 8),
+          _buildTypeChip(
+            TripType.localTrip,
+            'Passeggiate',
+            Icons.directions_walk_rounded,
+          ),
+          const SizedBox(width: 8),
+          _buildTypeChip(TripType.dayTrip, 'Gite', Icons.explore_rounded),
+          const SizedBox(width: 8),
+          _buildTypeChip(
+            TripType.multiDayTrip,
+            'Vacanze',
+            Icons.flight_takeoff_rounded,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTypeChip(TripType? type, String label, IconData icon) {
+    final isSelected = _selectedType == type;
+    return ChoiceChip(
+      avatar: Icon(
+        icon,
+        size: 16,
+        color: isSelected ? Colors.white : Colors.grey,
+      ),
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() {
+          _selectedType = selected ? type : null;
+        });
+      },
+      selectedColor: Theme.of(context).primaryColor,
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : Colors.black87,
+        fontSize: 12,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      ),
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: isSelected
+              ? Theme.of(context).primaryColor
+              : Colors.grey.shade200,
+        ),
+      ),
+      showCheckmark: false,
     );
   }
 
@@ -331,7 +407,7 @@ class _HomePageState extends State<HomePage> {
               ),
               child: Icon(
                 Icons.auto_awesome_rounded,
-                size: 48, // Ridotto leggermente
+                size: 48,
                 color: Theme.of(context).primaryColor,
               ),
             ),
@@ -629,7 +705,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  '${trip.moments.length}', // Semplice conteggio, efficiente
+                  '${trip.moments.length}',
                   style: const TextStyle(fontSize: 12),
                 ),
               ],
@@ -798,17 +874,27 @@ class _HomePageState extends State<HomePage> {
     List<NoTravelPeriod> periods,
   ) {
     final items = <dynamic>[];
-    for (var i = 0; i < trips.length; i++) {
-      items.add(trips[i]);
-      if (i < trips.length - 1) {
-        final start = trips[i].startDate;
-        final nextEnd = trips[i + 1].endDate ?? trips[i + 1].startDate;
-        if (start != null && nextEnd != null) {
-          final p = periods
-              .where((p) => p.startDate == nextEnd && p.endDate == start)
-              .firstOrNull;
-          if (p != null) items.add(p);
+    int tripIdx = 0;
+    int periodIdx = 0;
+
+    while (tripIdx < trips.length || periodIdx < periods.length) {
+      if (tripIdx < trips.length && periodIdx < periods.length) {
+        final tripDate = trips[tripIdx].startDate ?? DateTime.now();
+        final periodDate = periods[periodIdx].endDate;
+
+        if (tripDate.isAfter(periodDate)) {
+          items.add(trips[tripIdx]);
+          tripIdx++;
+        } else {
+          items.add(periods[periodIdx]);
+          periodIdx++;
         }
+      } else if (tripIdx < trips.length) {
+        items.add(trips[tripIdx]);
+        tripIdx++;
+      } else {
+        items.add(periods[periodIdx]);
+        periodIdx++;
       }
     }
     return items;

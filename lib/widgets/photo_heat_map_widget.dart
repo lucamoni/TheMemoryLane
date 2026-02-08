@@ -5,6 +5,8 @@ import 'package:flutter/gestures.dart';
 import '../models/moment.dart';
 import '../models/trip.dart';
 
+/// Widget che visualizza una mappa di calore (Heat Map) basata sui momenti del viaggio.
+/// Mostra anche il percorso GPS e i marker per ogni singolo momento.
 class PhotoHeatMapWidget extends StatefulWidget {
   final Trip trip;
   final Function(Moment)? onMomentSelected;
@@ -39,28 +41,31 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
     }
   }
 
+  /// Inizializza i dati della mappa: Marker, Polyline (percorso) e Cerchi (Heat Map).
   void _initializeMapData() {
     final contentMoments = widget.trip.moments
         .where((m) => m.latitude != null && m.latitude != 0.0)
         .toList();
 
-    // Ottimizzazione: Riduciamo il carico limitando i punti processati per la mappa di calore
-    final densityMap = _calculateDensity(contentMoments.take(50).toList());
+    // Calcoliamo la densità su tutti i momenti disponibili
+    final densityMap = _calculateDensity(contentMoments);
     final maxDensity = densityMap.isEmpty
         ? 1
         : densityMap.values.reduce((a, b) => a > b ? a : b);
 
+    // Crea i cerchi della mappa di calore basati sulla densità dei punti
     _heatCircles = densityMap.entries.map((entry) {
       final color = _getHeatColor(entry.value, maxDensity);
       return Circle(
         circleId: CircleId('heat_${entry.key.latitude}_${entry.key.longitude}'),
         center: entry.key,
-        radius: 80 + (entry.value * 20),
-        fillColor: color.withOpacity(0.3),
-        strokeWidth: 0, // Rimuoviamo il bordo per risparmiare fill-rate GPU
+        radius: 300 + (entry.value * 60.0),
+        fillColor: color.withOpacity(0.4),
+        strokeWidth: 0,
       );
     }).toSet();
 
+    // Crea i marker per ogni singolo momento (Foto, Video, Audio, Nota)
     _markers = contentMoments.asMap().entries.map((entry) {
       final moment = entry.value;
       double hue;
@@ -111,6 +116,7 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
       );
     }).toSet();
 
+    // Crea la linea continua del percorso GPS (se presente)
     if (widget.trip.gpsTrack.isNotEmpty) {
       _polylines = {
         Polyline(
@@ -126,14 +132,16 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
     }
   }
 
+  /// Raggruppa i momenti vicini geograficamente per calcolare l'indice di densità.
   Map<LatLng, int> _calculateDensity(List<Moment> moments) {
     final density = <LatLng, int>{};
     for (var m in moments) {
       final loc = LatLng(m.latitude!, m.longitude!);
       bool found = false;
       for (var k in density.keys) {
-        if ((k.latitude - loc.latitude).abs() < 0.0008 &&
-            (k.longitude - loc.longitude).abs() < 0.0008) {
+        // Soglia di raggruppamento (circa 500-600 metri) per cluster visibili a zoom medio
+        if ((k.latitude - loc.latitude).abs() < 0.005 &&
+            (k.longitude - loc.longitude).abs() < 0.005) {
           density[k] = (density[k] ?? 0) + 1;
           found = true;
           break;
@@ -144,11 +152,12 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
     return density;
   }
 
+  /// Ritorna un colore in base alla densità relativa (Giallo -> Arancio -> Rosso).
   Color _getHeatColor(int d, int max) {
     final r = d / max;
-    if (r < 0.3) return const Color(0xFFFCD34D); // Yellow
-    if (r < 0.7) return const Color(0xFFF59E0B); // Orange
-    return const Color(0xFFEF4444); // Red
+    if (r < 0.3) return const Color(0xFFFCD34D); // Giallo
+    if (r < 0.7) return const Color(0xFFF59E0B); // Arancio
+    return const Color(0xFFEF4444); // Rosso
   }
 
   @override
@@ -184,8 +193,7 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
                 scrollGesturesEnabled: true,
                 tiltGesturesEnabled: true,
                 rotateGesturesEnabled: true,
-                zoomControlsEnabled:
-                    true, // Aggiungiamo controlli espliciti per comodità
+                zoomControlsEnabled: true,
                 mapToolbarEnabled: false,
                 gestureRecognizers: {
                   Factory<OneSequenceGestureRecognizer>(
@@ -200,6 +208,7 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
     );
   }
 
+  /// Crea l'overlay superiore con titoli e legenda dei colori.
   Widget _buildTopOverlay() {
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -230,11 +239,11 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
           const SizedBox(height: 16),
           Row(
             children: [
-              _legend(const Color(0xFFEF4444), 'Hot'),
+              _legend(const Color(0xFFEF4444), 'Alta'),
               const SizedBox(width: 12),
-              _legend(const Color(0xFFF59E0B), 'Warm'),
+              _legend(const Color(0xFFF59E0B), 'Media'),
               const SizedBox(width: 12),
-              _legend(const Color(0xFFFCD34D), 'Cool'),
+              _legend(const Color(0xFFFCD34D), 'Bassa'),
               const Spacer(),
               TextButton.icon(
                 onPressed: _fit,
@@ -248,6 +257,7 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
     );
   }
 
+  /// Elemento singolo della legenda colori.
   Widget _legend(Color c, String l) {
     return Row(
       children: [
@@ -269,15 +279,17 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
     );
   }
 
+  /// Calcola la posizione iniziale della telecamera (partenza del viaggio o coordinata di default).
   LatLng _getInitialPos() {
     if (widget.trip.gpsTrack.isNotEmpty)
       return LatLng(
         widget.trip.gpsTrack.first[0],
         widget.trip.gpsTrack.first[1],
       );
-    return const LatLng(41.9028, 12.4964);
+    return const LatLng(41.9028, 12.4964); // Coordinate di Roma come fallback
   }
 
+  /// Adatta la visuale della mappa per mostrare tutto il viaggio e i momenti.
   void _fit() {
     if (_mapController == null) return;
     final points = <LatLng>[];

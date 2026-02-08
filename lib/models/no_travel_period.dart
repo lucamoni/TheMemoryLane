@@ -2,22 +2,23 @@ import 'package:hive/hive.dart';
 
 part 'no_travel_period.g.dart';
 
+/// Rappresenta un intervallo di tempo tra due viaggi in cui l'utente non ha registrato attività.
 @HiveType(typeId: 3)
 class NoTravelPeriod {
   @HiveField(0)
   final String id;
 
   @HiveField(1)
-  final DateTime startDate;
+  final DateTime startDate; // Inizio del periodo di pausa
 
   @HiveField(2)
-  final DateTime endDate;
+  final DateTime endDate; // Fine del periodo di pausa
 
   @HiveField(3)
-  final String label;
+  final String label; // Etichetta descrittiva (es. "Momento di riflessione")
 
   @HiveField(4)
-  final int durationInDays;
+  final int durationInDays; // Durata calcolata in giorni
 
   NoTravelPeriod({
     required this.id,

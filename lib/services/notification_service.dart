@@ -1,5 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+/// Servizio per la gestione delle notifiche locali.
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
 
@@ -10,6 +11,7 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  /// Inizializza il plugin delle notifiche per Android e iOS.
   Future<void> init() async {
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/launcher_icon');
@@ -24,6 +26,7 @@ class NotificationService {
     await _notificationsPlugin.initialize(initSettings);
   }
 
+  /// Mostra una notifica immediata.
   Future<void> showNotification({
     required String title,
     required String body,
@@ -54,10 +57,12 @@ class NotificationService {
     );
   }
 
+  /// Annulla una specifica notifica tramite ID.
   Future<void> cancelNotification(int id) async {
     await _notificationsPlugin.cancel(id);
   }
 
+  /// Annulla tutte le notifiche attive.
   Future<void> cancelAllNotifications() async {
     await _notificationsPlugin.cancelAll();
   }

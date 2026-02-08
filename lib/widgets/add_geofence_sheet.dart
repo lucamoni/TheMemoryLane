@@ -7,6 +7,8 @@ import '../services/geofencing_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 
+/// Foglio modale per l'aggiunta di un nuovo "Luogo del Cuore" (Geofence).
+/// Offre tre modalità: GPS attuale, selezione su Mappa, ricerca per Indirizzo.
 class AddGeofenceSheet extends StatefulWidget {
   final GeofencingManager manager;
   const AddGeofenceSheet({required this.manager, super.key});
@@ -24,7 +26,7 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
     text: '200',
   );
 
-  // Map state
+  // Stato della mappa
   GoogleMapController? _mapController;
   LatLng? _selectedPosition;
   Set<Marker> _markers = {};
@@ -38,6 +40,7 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
     _initCurrentLocation();
   }
 
+  /// Inizializza la posizione selezionata con le coordinate GPS attuali.
   Future<void> _initCurrentLocation() async {
     final loc = Provider.of<LocationService>(context, listen: false);
     final pos = await loc.getCurrentLocation();
@@ -49,6 +52,7 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
     }
   }
 
+  /// Aggiorna il marker sulla mappa in base alla posizione selezionata.
   void _updateMarkers() {
     if (_selectedPosition == null) return;
     setState(() {
@@ -62,10 +66,9 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
         ),
       };
     });
-    // Solo se necessario muovere la camera, altrimenti lasciamo libera
-    // _mapController?.animateCamera(CameraUpdate.newLatLng(_selectedPosition!));
   }
 
+  /// Esegue la ricerca geografica (geocoding) partendo da un indirizzo testuale.
   Future<void> _searchAddress() async {
     if (_addressController.text.isEmpty) return;
     setState(() => _isLoading = true);
@@ -80,10 +83,10 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
           _updateMarkers();
         });
 
-        // Passa alla tab mappa per confermare visivamente
+        // Passa automaticamente al tab mappa per confermare visivamente la posizione
         _tabController.animateTo(1);
 
-        // Muovi la camera sul punto trovato
+        // Muove la telecamera sul punto trovato
         _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, 16));
       } else {
         if (mounted) {
@@ -95,7 +98,7 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Errore ricerca indirizzo')),
+          const SnackBar(content: Text('Errore nella ricerca dell\'indirizzo')),
         );
       }
     } finally {
@@ -103,6 +106,7 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
     }
   }
 
+  /// Salva il nuovo geofence tramite il manager.
   Future<void> _save() async {
     if (_nameController.text.isEmpty || _selectedPosition == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -122,7 +126,7 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      // Handle error
+      // Gestione errore salvataggio geofence
     }
   }
 
@@ -175,6 +179,7 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
     );
   }
 
+  /// Tab per l'acquisizione della posizione GPS attuale.
   Widget _buildGpsTab() {
     return Center(
       child: Column(
@@ -196,7 +201,11 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
               setState(() => _isLoading = false);
             },
             child: _isLoading
-                ? const CircularProgressIndicator()
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Text('Aggiorna Posizione'),
           ),
         ],
@@ -204,6 +213,7 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
     );
   }
 
+  /// Tab per la selezione manuale del punto sulla mappa.
   Widget _buildMapTab() {
     return Stack(
       children: [
@@ -222,14 +232,10 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
           },
           markers: _markers,
           onTap: (pos) {
-            // Permetti tap to pick
             setState(() {
               _selectedPosition = pos;
               _updateMarkers();
             });
-          },
-          onCameraMove: (position) {
-            // Aggiorna posizione se si trascina la mappa (opzionale, ma utile per precisione)
           },
           onCameraIdle: () async {
             if (_mapController != null) {
@@ -238,6 +244,7 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
                 (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
                 (bounds.northeast.longitude + bounds.southwest.longitude) / 2,
               );
+              // Aggiorna la posizione selezionata al centro della mappa quando l'utente smette di muoverla
               setState(() {
                 _selectedPosition = center;
                 _updateMarkers();
@@ -252,11 +259,9 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
             ),
           },
         ),
-        // Mirino centrale fisso (opzionale, se vogliamo drag-to-pick)
         const Center(
           child: Icon(Icons.add_location_alt, size: 40, color: Colors.blue),
         ),
-        // Hint
         Positioned(
           top: 16,
           left: 16,
@@ -278,6 +283,7 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
     );
   }
 
+  /// Tab per la ricerca di un luogo tramite indirizzo.
   Widget _buildSearchTab() {
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -305,7 +311,7 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
               leading: const Icon(Icons.check_circle, color: Colors.green),
               title: const Text('Posizione trovata'),
               subtitle: Text(
-                '${_selectedPosition!.latitude}, ${_selectedPosition!.longitude}',
+                '${_selectedPosition!.latitude.toStringAsFixed(4)}, ${_selectedPosition!.longitude.toStringAsFixed(4)}',
               ),
             ),
         ],
@@ -313,6 +319,7 @@ class _AddGeofenceSheetState extends State<AddGeofenceSheet>
     );
   }
 
+  /// Form inferiore per definire nome e raggio della zona di notifica.
   Widget _buildForm() {
     return Container(
       padding: const EdgeInsets.all(24),

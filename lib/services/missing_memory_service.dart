@@ -1,10 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:location/location.dart';
 import 'database_service.dart';
 import 'location_service.dart';
 import 'geofencing_manager.dart';
 import 'notification_service.dart';
 
+/// Servizio che monitora i "ricordi mancanti" e il movimento dell'utente.
 class MissingMemoryService {
   static final MissingMemoryService _instance =
       MissingMemoryService._internal();
@@ -14,8 +14,9 @@ class MissingMemoryService {
   MissingMemoryService._internal();
 
   LocationData? _lastKnownLocation;
-  static const double _movementThresholdKm = 0.5; // 500 metri
+  static const double _movementThresholdKm = 0.5; // Soglia di 500 metri
 
+  /// Controlla se l'utente si trova vicino a un "Luogo del Cuore" senza aver aggiunto ricordi.
   Future<void> checkMissingMemories() async {
     try {
       final loc = LocationService.instance;
@@ -42,10 +43,10 @@ class MissingMemoryService {
           geofence.longitude,
         );
 
-        // Se siamo a 200m da un geofence
+        // Se siamo entro 200m da un Luogo del Cuore
         if (distance < 0.2) {
           for (var trip in activeTrips) {
-            // Verifica se ci sono momenti salvati qui (perimetro di 200m)
+            // Verifica se ci sono già momenti salvati in questa zona (raggio 200m)
             final hasNearbyMoment = trip.moments.any((m) {
               final mLat = m.latitude;
               final mLng = m.longitude;
@@ -60,11 +61,12 @@ class MissingMemoryService {
                   0.2;
             });
 
+            // Se non ci sono momenti vicini, suggerisci di aggiungerne uno
             if (!hasNearbyMoment) {
               NotificationService.instance.showNotification(
                 title: 'Nuovo Ricordo?',
                 body:
-                    'Sei tornato in un tuo Luogo del Cuore! Vuoi aggiungere un nuovo ricordo?',
+                    'Sei tornato in un tuo Luogo del Cuore! Vuoi aggiungere un nuovo ricordo al viaggio in corso?',
                 payload: trip.id,
               );
             }
@@ -72,11 +74,11 @@ class MissingMemoryService {
         }
       }
     } catch (e) {
-      debugPrint('Error checking missing memories: $e');
+      // Errore silenzioso per non disturbare l'esperienza utente
     }
   }
 
-  /// Rileva movimento significativo e suggerisce di iniziare un nuovo viaggio
+  /// Rileva movimento significativo e suggerisce di iniziare un nuovo viaggio se non ce n'è uno attivo.
   Future<void> checkForMovement() async {
     try {
       final currentLocation = await LocationService.instance
@@ -87,13 +89,13 @@ class MissingMemoryService {
         return;
       }
 
-      // Prima volta che controlliamo
+      // Inizializzazione della posizione di riferimento
       if (_lastKnownLocation == null) {
         _lastKnownLocation = currentLocation;
         return;
       }
 
-      // Calcola la distanza dall'ultima posizione
+      // Calcola la distanza dall'ultima posizione nota
       final distance = LocationService.instance.calculateDistance(
         _lastKnownLocation!.latitude!,
         _lastKnownLocation!.longitude!,
@@ -101,31 +103,31 @@ class MissingMemoryService {
         currentLocation.longitude!,
       );
 
-      // Se ci siamo mossi di più di 500m
+      // Se lo spostamento supera la soglia (500m)
       if (distance >= _movementThresholdKm) {
-        // Controlla se c'è un viaggio attivo
+        // Controlla se c'è già un viaggio attivo in registrazione
         final trips = DatabaseService.instance.getAllTrips();
         final hasActiveTrip = trips.any((trip) => trip.isActive);
 
         if (!hasActiveTrip) {
-          // Suggerisci di iniziare un nuovo viaggio
+          // Suggerisci di avviare una nuova avventura
           await NotificationService.instance.showNotification(
-            title: '🚀 Nuovo Viaggio?',
+            title: '🚀 Inizia un nuovo viaggio?',
             body:
-                'Sembra che tu ti stia muovendo! Vuoi iniziare a registrare un nuovo viaggio?',
+                'Sembra che tu sia in movimento! Vuoi iniziare a registrare questa nuova esperienza?',
             payload: 'start_new_trip',
           );
         }
 
-        // Aggiorna la posizione
+        // Aggiorna la posizione di riferimento per il prossimo controllo
         _lastKnownLocation = currentLocation;
       }
     } catch (e) {
-      // Errore nel controllo del movimento
+      // Errore nel controllo del movimento ignorato per stabilità
     }
   }
 
-  /// Resetta il tracking del movimento
+  /// Resetta il tracciamento del movimento.
   void resetMovementTracking() {
     _lastKnownLocation = null;
   }
