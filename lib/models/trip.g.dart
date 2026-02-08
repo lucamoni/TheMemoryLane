@@ -28,6 +28,7 @@ class TripAdapter extends TypeAdapter<Trip> {
           ?.toList(),
       totalDistance: fields[7] as double,
       isActive: fields[8] as bool,
+      isPaused: fields[12] as bool,
       tripType: fields[9] as TripType,
       folderId: fields[10] as String?,
       coverPath: fields[11] as String?,
@@ -37,7 +38,7 @@ class TripAdapter extends TypeAdapter<Trip> {
   @override
   void write(BinaryWriter writer, Trip obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -61,7 +62,9 @@ class TripAdapter extends TypeAdapter<Trip> {
       ..writeByte(10)
       ..write(obj.folderId)
       ..writeByte(11)
-      ..write(obj.coverPath);
+      ..write(obj.coverPath)
+      ..writeByte(12)
+      ..write(obj.isPaused);
   }
 
   @override

@@ -25,19 +25,16 @@ class TimelineWidget extends StatelessWidget {
         ),
       );
 
-    // Calcola le "pietre miliari" della distanza (es. ogni 5km o 10km)
-    final distanceMilestones = _calculateDistanceMilestones(trip.totalDistance);
-
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
       physics: const BouncingScrollPhysics(),
-      itemCount: sortedMoments.length + (distanceMilestones.isNotEmpty ? 1 : 0),
+      itemCount: sortedMoments.length + 1, // Sempre +1 per l'header
       itemBuilder: (context, index) {
-        if (index == 0 && distanceMilestones.isNotEmpty) {
+        if (index == 0) {
           return _buildStatsHeader(trip);
         }
 
-        final momentIdx = distanceMilestones.isNotEmpty ? index - 1 : index;
+        final momentIdx = index - 1;
         final moment = sortedMoments[momentIdx];
         final isLast = momentIdx == sortedMoments.length - 1;
 
@@ -56,7 +53,7 @@ class TimelineWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF16697A).withOpacity(0.06),
+            color: const Color(0xFF16697A).withValues(alpha: 0.06),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -67,13 +64,13 @@ class TimelineWidget extends StatelessWidget {
         children: [
           _buildStatItem(
             Icons.route_rounded,
-            '${trip.totalDistance.toStringAsFixed(1)}',
+            trip.totalDistance.toStringAsFixed(1),
             'km totali',
           ),
           Container(width: 1, height: 40, color: Colors.grey.shade100),
           _buildStatItem(
             Icons.auto_awesome_rounded,
-            '${trip.moments.length}',
+            trip.moments.length.toString(),
             'momenti',
           ),
         ],
@@ -106,7 +103,51 @@ class TimelineWidget extends StatelessWidget {
     );
   }
 
+  /// Widget per visualizzare il separatore di fine giornata.
+  Widget _buildDayEndMarker(Moment moment) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 24),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Divider(color: Colors.grey.shade200, thickness: 1),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.nightlight_round,
+                  size: 14,
+                  color: Colors.blueGrey,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  moment.title ?? 'Fine Giornata',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blueGrey,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTimelineItem(BuildContext context, Moment moment, bool isLast) {
+    if (moment.type == MomentType.dayEnd) {
+      return _buildDayEndMarker(moment);
+    }
+
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -128,10 +169,10 @@ class TimelineWidget extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: _getMomentColor(moment.type!).withOpacity(0.15),
+            color: _getMomentColor(moment.type!).withValues(alpha: 0.15),
             shape: BoxShape.circle,
             border: Border.all(
-              color: _getMomentColor(moment.type!).withOpacity(0.3),
+              color: _getMomentColor(moment.type!).withValues(alpha: 0.3),
               width: 2,
             ),
           ),
@@ -150,7 +191,7 @@ class TimelineWidget extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    _getMomentColor(moment.type!).withOpacity(0.5),
+                    _getMomentColor(moment.type!).withValues(alpha: 0.5),
                     Colors.grey.shade200,
                   ],
                 ),
@@ -171,7 +212,7 @@ class TimelineWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -212,8 +253,9 @@ class TimelineWidget extends StatelessWidget {
                     size: 20,
                   ),
                   onSelected: (val) {
-                    if (val == 'delete')
+                    if (val == 'delete') {
                       _showDeleteDialog(context, moment, dbService);
+                    }
                   },
                   itemBuilder: (context) => [
                     const PopupMenuItem(
@@ -331,7 +373,7 @@ class TimelineWidget extends StatelessWidget {
               Text(
                 'Tocca per guardare il video',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontSize: 12,
                 ),
               ),
@@ -359,6 +401,8 @@ class TimelineWidget extends StatelessWidget {
         return Icons.camera_alt_rounded;
       case MomentType.video:
         return Icons.videocam_rounded;
+      case MomentType.dayEnd:
+        return Icons.nightlight_round;
       case MomentType.audio:
         return Icons.mic_rounded;
     }
@@ -372,6 +416,8 @@ class TimelineWidget extends StatelessWidget {
         return const Color(0xFFFFA62B);
       case MomentType.video:
         return Colors.redAccent;
+      case MomentType.dayEnd:
+        return Colors.blueGrey;
       case MomentType.audio:
         return const Color(0xFF82C0CC);
     }
@@ -385,18 +431,11 @@ class TimelineWidget extends StatelessWidget {
         return 'Foto';
       case MomentType.video:
         return 'Video';
+      case MomentType.dayEnd:
+        return 'Fine Giornata';
       case MomentType.audio:
         return 'Audio';
     }
-  }
-
-  List<double> _calculateDistanceMilestones(double totalDistance) {
-    if (totalDistance < 5) return [];
-    List<double> milestones = [];
-    for (double i = 5; i <= totalDistance; i += 5) {
-      milestones.add(i);
-    }
-    return milestones;
   }
 
   void _showDeleteDialog(

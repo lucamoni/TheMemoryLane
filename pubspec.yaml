@@ -49,7 +49,7 @@ flutter_launcher_icons:
 
 flutter_native_splash:
   color: "#16697A"
-  image: "/Users/lucamoni/Documents/UNIBO/LAM/TheMemoryLane/TheMemoryLane 512.png"
+  image: assets/logo/logo_512.png
   android: true
   ios: true
   fullscreen: true

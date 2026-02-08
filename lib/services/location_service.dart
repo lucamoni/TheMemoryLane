@@ -1,5 +1,6 @@
 import 'package:location/location.dart';
 import 'dart:math' as math;
+import 'dart:async';
 
 /// Servizio per la gestione della geolocalizzazione e del tracciamento GPS.
 class LocationService {
@@ -15,6 +16,7 @@ class LocationService {
 
   bool get isTracking => _isTracking;
   List<List<double>> get gpsTrack => _gpsTrack;
+  StreamSubscription<LocationData>? _locationSubscription;
 
   /// Richiede i permessi per la localizzazione e configura il modulo GPS.
   Future<bool> requestLocationPermission() async {
@@ -35,6 +37,8 @@ class LocationService {
 
   /// Avvia la registrazione del percorso GPS.
   Future<void> startTracking() async {
+    if (_isTracking) return; // Già in esecuzione
+
     final hasPermission = await requestLocationPermission();
     if (!hasPermission) {
       throw Exception('Permesso di localizzazione negato');
@@ -42,10 +46,22 @@ class LocationService {
 
     _isTracking = true;
 
+    // Cattura la posizione iniziale immediatamente se il tracciato è vuoto
+    if (_gpsTrack.isEmpty) {
+      final initialLoc = await _location.getLocation();
+      if (initialLoc.latitude != null && initialLoc.longitude != null) {
+        _gpsTrack.add([initialLoc.latitude!, initialLoc.longitude!]);
+      }
+    }
+
+    await _locationSubscription?.cancel();
+
     // Monitora le posizioni con filtro di distanza per efficienza
-    _location.onLocationChanged.listen((LocationData currentLocation) {
-      if (_isTracking &&
-          currentLocation.latitude != null &&
+    _locationSubscription = _location.onLocationChanged.listen((
+      LocationData currentLocation,
+    ) {
+      if (!_isTracking) return;
+      if (currentLocation.latitude != null &&
           currentLocation.longitude != null) {
         if (_gpsTrack.isEmpty) {
           _gpsTrack.add([
@@ -75,6 +91,8 @@ class LocationService {
   /// Interrompe la registrazione del percorso.
   Future<void> stopTracking() async {
     _isTracking = false;
+    await _locationSubscription?.cancel();
+    _locationSubscription = null;
   }
 
   /// Ottiene la posizione GPS attuale.

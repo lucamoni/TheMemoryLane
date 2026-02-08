@@ -55,6 +55,7 @@ class _TripDetailPageState extends State<TripDetailPage>
         loc.setInitialTrack(_currentTrip.gpsTrack);
         await loc.startTracking();
       }
+      _syncTracking(); // Forza il primo aggiornamento immediato
       _startTrackingTimer();
     } catch (e) {
       debugPrint('Errore nel riprendere il tracciamento: $e');
@@ -109,7 +110,10 @@ class _TripDetailPageState extends State<TripDetailPage>
             Expanded(
               child: TabBarView(
                 controller: _tabController,
-                children: [_buildTimelineTab(), _buildHeatMapTab()],
+                children: [
+                  _KeepAliveWrapper(child: _buildTimelineTab()),
+                  _KeepAliveWrapper(child: _buildHeatMapTab()),
+                ],
               ),
             ),
           ],
@@ -125,9 +129,35 @@ class _TripDetailPageState extends State<TripDetailPage>
   Widget _buildSliverAppBar(BuildContext context) {
     return SliverAppBar(
       expandedHeight: 240,
-      pinned: true,
-      stretch: true,
       backgroundColor: Theme.of(context).primaryColor,
+      title: _currentTrip.isPaused
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.pause_circle_filled_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'VIAGGIO IN PAUSA',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : null,
       flexibleSpace: FlexibleSpaceBar(
         background: Stack(
           fit: StackFit.expand,
@@ -153,12 +183,17 @@ class _TripDetailPageState extends State<TripDetailPage>
                         _buildDefaultGradientBackground(context),
                   )
                 : _buildDefaultGradientBackground(context),
+            // Overlay per rendere il titolo leggibile in ogni stato
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.black.withOpacity(0.6), Colors.transparent],
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.3),
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.5),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                 ),
               ),
             ),
@@ -186,7 +221,7 @@ class _TripDetailPageState extends State<TripDetailPage>
                       'it_IT',
                     ).format(_currentTrip.startDate ?? DateTime.now()),
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       fontSize: 14,
                     ),
                   ),
@@ -227,6 +262,7 @@ class _TripDetailPageState extends State<TripDetailPage>
   Future<void> _changeCoverImage() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
     if (image != null) {
+      if (!mounted) return;
       final db = Provider.of<DatabaseService>(context, listen: false);
       setState(() {
         _currentTrip = _currentTrip.copyWith(coverPath: image.path);
@@ -256,61 +292,63 @@ class _TripDetailPageState extends State<TripDetailPage>
   /// Barra inferiore visibile solo durante la registrazione di un viaggio attivo.
   Widget _buildActiveTripDock() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -4),
           ),
         ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          TextButton.icon(
-            onPressed: () => _stopRecording(context),
-            icon: const Icon(
-              Icons.stop_circle_outlined,
-              color: Colors.red,
-              size: 20,
-            ),
-            label: const Text(
-              'Termina',
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-            ),
-          ),
-          const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.gps_fixed, color: Colors.red, size: 14),
-              SizedBox(width: 4),
-              Text(
-                'LIVE',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 10,
-                  color: Colors.red,
-                  letterSpacing: 1.2,
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: _currentTrip.isPaused ? _resumeTrip : _pauseTrip,
+              icon: Icon(
+                _currentTrip.isPaused
+                    ? Icons.play_arrow_rounded
+                    : Icons.pause_rounded,
+              ),
+              label: Text(
+                _currentTrip.isPaused ? 'Riprendi Viaggio' : 'Pausa / Opzioni',
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _currentTrip.isPaused
+                    ? const Color(0xFF16697A)
+                    : Colors.orange.shade700,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
               ),
-            ],
-          ),
-          ElevatedButton.icon(
-            onPressed: () => _showMomentSelector(),
-            icon: const Icon(Icons.add_circle_outline, size: 18),
-            label: const Text('Momento'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF16697A),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
             ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: IconButton(
+              onPressed: _endTrip,
+              icon: Icon(Icons.stop_rounded, color: Colors.red.shade700),
+              tooltip: 'Termina definitivamente',
+            ),
+          ),
+          const SizedBox(width: 12),
+          FloatingActionButton(
+            onPressed: _currentTrip.isPaused ? null : _showMomentSelector,
+            backgroundColor: _currentTrip.isPaused
+                ? Colors.grey.shade300
+                : const Color(0xFF16697A),
+            elevation: 0,
+            mini: true,
+            child: const Icon(Icons.add_rounded, color: Colors.white),
           ),
         ],
       ),
@@ -321,15 +359,14 @@ class _TripDetailPageState extends State<TripDetailPage>
   Widget _buildTimelineTab() {
     return TimelineWidget(
       trip: _currentTrip,
-      onMomentDeleted: () {
-        setState(() {
-          // Ricarichiamo i dati aggiornati
-          final db = Provider.of<DatabaseService>(context, listen: false);
-          final updatedTrip = db.getAllTrips().firstWhere(
-            (t) => t.id == _currentTrip.id,
-          );
-          _currentTrip = updatedTrip;
-        });
+      onMomentDeleted: () async {
+        final db = Provider.of<DatabaseService>(context, listen: false);
+        final updatedTrip = await db.getTrip(_currentTrip.id!);
+        if (updatedTrip != null && mounted) {
+          setState(() {
+            _currentTrip = updatedTrip;
+          });
+        }
       },
     );
   }
@@ -430,10 +467,12 @@ class _TripDetailPageState extends State<TripDetailPage>
   Future<void> _takeVideo() async {
     final XFile? video = await _picker.pickVideo(source: ImageSource.camera);
     if (video != null) {
+      if (!mounted) return;
       final loc = await Provider.of<LocationService>(
         context,
         listen: false,
       ).getCurrentLocation();
+      if (!mounted) return;
 
       if (!mounted) return;
 
@@ -496,6 +535,7 @@ class _TripDetailPageState extends State<TripDetailPage>
             context,
             listen: false,
           ).getCurrentLocation();
+          if (!mounted) return;
           _saveMoment(
             MomentType.audio,
             path,
@@ -578,10 +618,13 @@ class _TripDetailPageState extends State<TripDetailPage>
               ElevatedButton(
                 onPressed: () async {
                   if (controller.text.isNotEmpty) {
+                    if (!mounted) return;
                     final loc = await Provider.of<LocationService>(
                       context,
                       listen: false,
                     ).getCurrentLocation();
+                    if (!mounted) return;
+                    if (!mounted) return;
                     _saveMoment(
                       MomentType.note,
                       controller.text,
@@ -589,6 +632,7 @@ class _TripDetailPageState extends State<TripDetailPage>
                       lng: loc?.longitude,
                       title: 'Nota',
                     );
+                    if (!context.mounted) return;
                     Navigator.pop(context);
                   }
                 },
@@ -618,7 +662,7 @@ class _TripDetailPageState extends State<TripDetailPage>
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: color, size: 30),
@@ -637,10 +681,12 @@ class _TripDetailPageState extends State<TripDetailPage>
   Future<void> _takePhoto() async {
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
     if (photo != null) {
+      if (!mounted) return;
       final loc = await Provider.of<LocationService>(
         context,
         listen: false,
       ).getCurrentLocation();
+      if (!mounted) return;
 
       if (!mounted) return;
 
@@ -703,6 +749,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     String? description,
     String? id,
   }) async {
+    if (!mounted) return;
     final db = Provider.of<DatabaseService>(context, listen: false);
     final moment = Moment(
       id: id ?? const Uuid().v4(),
@@ -729,18 +776,145 @@ class _TripDetailPageState extends State<TripDetailPage>
     });
   }
 
-  /// Ferma la registrazione del viaggio attivo.
-  void _stopRecording(BuildContext context) async {
+  /// Mostra un dialogo per scegliere il tipo di pausa (semplice vs fine giornata).
+  Future<void> _pauseTrip() async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Opzioni Pausa'),
+        content: const Text(
+          'Come vuoi sospendere il viaggio?\n\n'
+          '• Pausa Semplice: ferma solo il GPS.\n'
+          '• Fine Giornata: aggiunge un marcatore nella timeline.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annulla'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, 'simple'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Pausa Semplice'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, 'dayEnd'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF16697A),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Fine Giornata'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice != null) {
+      await _executePause(isDayEnd: choice == 'dayEnd');
+    }
+  }
+
+  /// Esegue la logica di pausa effettiva.
+  Future<void> _executePause({required bool isDayEnd}) async {
+    if (!mounted) return;
     final loc = Provider.of<LocationService>(context, listen: false);
     final db = Provider.of<DatabaseService>(context, listen: false);
 
-    bool confirm =
-        await showDialog(
+    // Recupera l'ultima posizione disponibile
+    final currentPos = await loc.getCurrentLocation().timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => null,
+    );
+
+    await loc.stopTracking();
+    _trackingTimer?.cancel();
+
+    Moment? dayEndMoment;
+    if (isDayEnd) {
+      final dayNumber =
+          _currentTrip.moments
+              .where((m) => m.type == MomentType.dayEnd)
+              .length +
+          1;
+
+      dayEndMoment = Moment(
+        id: const Uuid().v4(),
+        tripId: _currentTrip.id,
+        type: MomentType.dayEnd,
+        content: 'Fine Giorno $dayNumber',
+        timestamp: DateTime.now(),
+        latitude: currentPos?.latitude ?? 0.0,
+        longitude: currentPos?.longitude ?? 0.0,
+        title: 'Giorno $dayNumber Concluso',
+      );
+    }
+
+    setState(() {
+      final updatedMoments = List<Moment>.from(_currentTrip.moments);
+      if (dayEndMoment != null) {
+        updatedMoments.add(dayEndMoment);
+      }
+
+      _currentTrip = _currentTrip.copyWith(
+        isPaused: true,
+        moments: updatedMoments,
+        gpsTrack: loc.getTrack(),
+        totalDistance: loc.getTotalDistance(),
+      );
+    });
+
+    await db.saveTrip(_currentTrip);
+    if (dayEndMoment != null) {
+      await db.saveMoment(dayEndMoment);
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isDayEnd
+                ? 'Giorno concluso salvato. Viaggio in pausa.'
+                : 'Pausa semplice attivata. GPS sospeso.',
+          ),
+          backgroundColor: const Color(0xFF16697A),
+        ),
+      );
+    }
+  }
+
+  /// Riprende un viaggio in pausa, riavviando il tracking GPS.
+  Future<void> _resumeTrip() async {
+    final loc = Provider.of<LocationService>(context, listen: false);
+    final db = Provider.of<DatabaseService>(context, listen: false);
+
+    // Re-idrata il path nel service se necessario (anche se dovrebbe essere già lì se l'app è aperta)
+    loc.setInitialTrack(_currentTrip.gpsTrack);
+
+    await loc.startTracking();
+    _startTrackingTimer();
+
+    setState(() {
+      _currentTrip = _currentTrip.copyWith(isPaused: false);
+    });
+
+    await db.saveTrip(_currentTrip);
+  }
+
+  /// Termina definitivamente il viaggio.
+  Future<void> _endTrip() async {
+    final loc = Provider.of<LocationService>(context, listen: false);
+    final db = Provider.of<DatabaseService>(context, listen: false);
+
+    final confirm =
+        await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Termina Viaggio'),
             content: const Text(
-              'Sei sicuro di voler fermare la registrazione? Non potrai aggiungere altri momenti automatici a questo viaggio.',
+              'Vuoi concludere definitivamente questa avventura? Non potrai più aggiungere momenti o tracce GPS.',
             ),
             actions: [
               TextButton(
@@ -757,11 +931,15 @@ class _TripDetailPageState extends State<TripDetailPage>
         false;
 
     if (confirm) {
-      await loc.stopTracking();
-      _trackingTimer?.cancel();
+      if (!_currentTrip.isPaused) {
+        await loc.stopTracking();
+        _trackingTimer?.cancel();
+      }
+
       setState(() {
         _currentTrip = _currentTrip.copyWith(
           isActive: false,
+          isPaused: false,
           endDate: DateTime.now(),
           gpsTrack: loc.getTrack(),
           totalDistance: loc.getTotalDistance(),
@@ -798,7 +976,7 @@ class _TripDetailPageState extends State<TripDetailPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
+        color: color.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -863,7 +1041,9 @@ class _AudioRecorderDialogState extends State<_AudioRecorderDialog> {
           onPressed: () async {
             if (!_isRecording) {
               if (await _audioRecorder.hasPermission()) {
+                if (!mounted) return;
                 final directory = await getApplicationDocumentsDirectory();
+                if (!mounted) return;
                 _audioPath = p.join(
                   directory.path,
                   'audio_${DateTime.now().millisecondsSinceEpoch}.m4a',
@@ -876,9 +1056,11 @@ class _AudioRecorderDialogState extends State<_AudioRecorderDialog> {
               }
             } else {
               final path = await _audioRecorder.stop();
+              if (!mounted) return;
               if (path != null) {
                 widget.onSaved(path);
               }
+              if (!context.mounted) return;
               Navigator.pop(context);
             }
           },
@@ -892,4 +1074,25 @@ class _AudioRecorderDialogState extends State<_AudioRecorderDialog> {
       ],
     );
   }
+}
+
+/// Wrapper per mantenere vivo lo stato dei tab ed evitare ricostruzioni costose (es. Google Map).
+class _KeepAliveWrapper extends StatefulWidget {
+  final Widget child;
+  const _KeepAliveWrapper({required this.child});
+
+  @override
+  State<_KeepAliveWrapper> createState() => _KeepAliveWrapperState();
+}
+
+class _KeepAliveWrapperState extends State<_KeepAliveWrapper>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
+  }
+
+  @override
+  bool get wantKeepAlive => true;
 }

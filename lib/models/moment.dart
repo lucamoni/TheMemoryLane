@@ -13,6 +13,8 @@ enum MomentType {
   audio,
   @HiveField(3)
   video,
+  @HiveField(4)
+  dayEnd, // Marcatore di fine giornata per viaggi multi-day
 }
 
 /// Rappresenta un singolo istante memorabile catturato dall'utente.

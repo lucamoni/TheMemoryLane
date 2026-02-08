@@ -53,6 +53,9 @@ class Trip {
   @HiveField(11)
   final String? coverPath; // Percorso dell'immagine di copertina personalizzata
 
+  @HiveField(12)
+  final bool isPaused; // Indica se la registrazione è temporaneamente sospesa (es. fine giornata)
+
   Trip({
     required this.id,
     required this.title,
@@ -63,6 +66,7 @@ class Trip {
     List<List<double>>? gpsTrack,
     this.totalDistance = 0.0,
     this.isActive = true,
+    this.isPaused = false,
     this.tripType = TripType.dayTrip,
     this.folderId,
     this.coverPath,
@@ -88,6 +92,7 @@ class Trip {
           [],
       totalDistance: json['totalDistance'] ?? 0.0,
       isActive: json['isActive'] ?? true,
+      isPaused: json['isPaused'] ?? false,
       tripType: TripType.values[json['tripType'] ?? 1],
       folderId: json['folderId'],
       coverPath: json['coverPath'],
@@ -105,6 +110,7 @@ class Trip {
       'gpsTrack': gpsTrack,
       'totalDistance': totalDistance,
       'isActive': isActive,
+      'isPaused': isPaused,
       'tripType': tripType.index,
       'folderId': folderId,
       'coverPath': coverPath,
@@ -124,6 +130,7 @@ class Trip {
     TripType? tripType,
     String? folderId,
     String? coverPath,
+    bool? isPaused,
   }) {
     return Trip(
       id: id ?? this.id,
@@ -135,6 +142,7 @@ class Trip {
       gpsTrack: gpsTrack ?? this.gpsTrack,
       totalDistance: totalDistance ?? this.totalDistance,
       isActive: isActive ?? this.isActive,
+      isPaused: isPaused ?? this.isPaused,
       tripType: tripType ?? this.tripType,
       folderId: folderId ?? this.folderId,
       coverPath: coverPath ?? this.coverPath,

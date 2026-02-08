@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import '../models/moment.dart';
 import '../models/trip.dart';
+import '../services/location_service.dart';
 
 /// Widget che visualizza una mappa di calore (Heat Map) basata sui momenti del viaggio.
 /// Mostra anche il percorso GPS e i marker per ogni singolo momento.
@@ -33,10 +34,18 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
   }
 
   @override
+  void dispose() {
+    _mapController?.dispose();
+    super.dispose();
+  }
+
+  @override
   void didUpdateWidget(covariant PhotoHeatMapWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Aggiorna solo se i dati sostanziali sono cambiati
     if (oldWidget.trip.gpsTrack.length != widget.trip.gpsTrack.length ||
-        oldWidget.trip.moments.length != widget.trip.moments.length) {
+        oldWidget.trip.moments.length != widget.trip.moments.length ||
+        oldWidget.trip.isPaused != widget.trip.isPaused) {
       _initializeMapData();
     }
   }
@@ -60,7 +69,7 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
         circleId: CircleId('heat_${entry.key.latitude}_${entry.key.longitude}'),
         center: entry.key,
         radius: 300 + (entry.value * 60.0),
-        fillColor: color.withOpacity(0.4),
+        fillColor: color.withValues(alpha: 0.4),
         strokeWidth: 0,
       );
     }).toSet();
@@ -171,7 +180,10 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 20,
+                ),
               ],
             ),
             child: ClipRRect(
@@ -281,11 +293,29 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
 
   /// Calcola la posizione iniziale della telecamera (partenza del viaggio o coordinata di default).
   LatLng _getInitialPos() {
-    if (widget.trip.gpsTrack.isNotEmpty)
+    if (widget.trip.gpsTrack.isNotEmpty) {
       return LatLng(
         widget.trip.gpsTrack.first[0],
         widget.trip.gpsTrack.first[1],
       );
+    }
+    // Se non ci sono punti ancora, proviamo a usare la posizione dei momenti
+    final momentsWithLocation = widget.trip.moments.where(
+      (m) => m.latitude != 0.0,
+    );
+    if (momentsWithLocation.isNotEmpty) {
+      final first = momentsWithLocation.first;
+      return LatLng(first.latitude!, first.longitude!);
+    }
+
+    // Se il viaggio è attivo, proviamo a usare l'ultima posizione nota dal service
+    if (widget.trip.isActive) {
+      final lastLoc = LocationService.instance.getTrack();
+      if (lastLoc.isNotEmpty) {
+        return LatLng(lastLoc.last[0], lastLoc.last[1]);
+      }
+    }
+
     return const LatLng(41.9028, 12.4964); // Coordinate di Roma come fallback
   }
 
@@ -293,10 +323,14 @@ class _PhotoHeatMapWidgetState extends State<PhotoHeatMapWidget> {
   void _fit() {
     if (_mapController == null) return;
     final points = <LatLng>[];
-    for (var c in widget.trip.gpsTrack) points.add(LatLng(c[0], c[1]));
-    for (var m in widget.trip.moments)
-      if (m.latitude != null && m.latitude != 0.0)
+    for (var c in widget.trip.gpsTrack) {
+      points.add(LatLng(c[0], c[1]));
+    }
+    for (var m in widget.trip.moments) {
+      if (m.latitude != null && m.latitude != 0.0) {
         points.add(LatLng(m.latitude!, m.longitude!));
+      }
+    }
     if (points.isEmpty) return;
 
     double minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;

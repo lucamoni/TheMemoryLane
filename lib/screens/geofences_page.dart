@@ -83,7 +83,7 @@ class _GeofencesPageState extends State<GeofencesPage>
           Icon(
             Icons.favorite_border_rounded,
             size: 64,
-            color: Colors.grey.withOpacity(0.3),
+            color: Colors.grey.withValues(alpha: 0.3),
           ),
           const SizedBox(height: 16),
           const Text(
@@ -121,7 +121,7 @@ class _GeofencesPageState extends State<GeofencesPage>
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: Colors.black.withValues(alpha: 0.04),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -132,7 +132,7 @@ class _GeofencesPageState extends State<GeofencesPage>
             leading: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFA62B).withOpacity(0.1),
+                color: const Color(0xFFFFA62B).withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -181,7 +181,7 @@ class _GeofencesPageState extends State<GeofencesPage>
         circleId: CircleId(gf.id),
         center: LatLng(gf.latitude, gf.longitude),
         radius: gf.radius.first.length.toDouble(),
-        fillColor: const Color(0xFFFFA62B).withOpacity(0.2),
+        fillColor: const Color(0xFFFFA62B).withValues(alpha: 0.2),
         strokeWidth: 1,
         strokeColor: const Color(0xFFFFA62B),
       );

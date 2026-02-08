@@ -12,6 +12,7 @@ import 'geofences_page.dart';
 import 'package:intl/intl.dart';
 
 import '../models/trip_folder.dart';
+import '../services/location_service.dart';
 import 'package:uuid/uuid.dart';
 
 /// Pagina principale dell'applicazione che mostra la lista dei viaggi e delle cartelle.
@@ -43,8 +44,9 @@ class _HomePageState extends State<HomePage> {
               final folders = folderBox.values.toList();
 
               // Stato vuoto se non ci sono viaggi né cartelle
-              if (allTrips.isEmpty && folders.isEmpty)
+              if (allTrips.isEmpty && folders.isEmpty) {
                 return _buildEmptyState();
+              }
 
               // Filtra i viaggi in base alla cartella selezionata
               // Filtra i viaggi in base alla cartella e al tipo selezionato
@@ -101,13 +103,15 @@ class _HomePageState extends State<HomePage> {
                   SliverList(
                     delegate: SliverChildBuilderDelegate((context, index) {
                       final item = timelineItems[index];
-                      if (item is NoTravelPeriod)
+                      if (item is NoTravelPeriod) {
                         return _buildNoTravelPeriodTile(item);
+                      }
                       if (item is Trip) {
                         if (item.isActive &&
                             index == 0 &&
-                            _selectedFolderId == null)
+                            _selectedFolderId == null) {
                           return const SizedBox.shrink();
+                        }
                         return _buildTripCard(
                           context,
                           item,
@@ -339,8 +343,9 @@ class _HomePageState extends State<HomePage> {
               title: const Text('Elimina Cartella'),
               onTap: () {
                 dbService.deleteFolder(folderId);
-                if (_selectedFolderId == folderId)
+                if (_selectedFolderId == folderId) {
                   setState(() => _selectedFolderId = null);
+                }
                 Navigator.pop(context);
               },
             ),
@@ -369,7 +374,10 @@ class _HomePageState extends State<HomePage> {
             color: Colors.white,
             shape: BoxShape.circle,
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+              ),
             ],
           ),
           child: IconButton(
@@ -400,7 +408,7 @@ class _HomePageState extends State<HomePage> {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF16697A).withOpacity(0.05),
+                    color: const Color(0xFF16697A).withValues(alpha: 0.05),
                     blurRadius: 20,
                   ),
                 ],
@@ -464,7 +472,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 fit: BoxFit.cover,
                 colorFilter: ColorFilter.mode(
-                  Colors.black.withOpacity(0.6),
+                  Colors.black.withValues(alpha: 0.6),
                   BlendMode.darken,
                 ),
               )
@@ -484,7 +492,7 @@ class _HomePageState extends State<HomePage> {
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).primaryColor.withOpacity(0.3),
+            color: Theme.of(context).primaryColor.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -501,24 +509,36 @@ class _HomePageState extends State<HomePage> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: trip.isPaused
+                      ? Colors.orange.withValues(alpha: 0.3)
+                      : Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20),
+                  border: trip.isPaused
+                      ? Border.all(color: Colors.orange.shade300)
+                      : null,
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    SizedBox(
-                      width: 8,
-                      height: 8,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                        value: null,
+                    if (!trip.isPaused)
+                      const SizedBox(
+                        width: 8,
+                        height: 8,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                          value: null,
+                        ),
+                      )
+                    else
+                      const Icon(
+                        Icons.pause_circle_filled_rounded,
+                        color: Colors.orange,
+                        size: 14,
                       ),
-                    ),
-                    SizedBox(width: 8),
+                    const SizedBox(width: 8),
                     Text(
-                      'TRACKING ATTIVO',
-                      style: TextStyle(
+                      trip.isPaused ? 'TRACKING IN PAUSA' : 'TRACKING ATTIVO',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
@@ -544,7 +564,7 @@ class _HomePageState extends State<HomePage> {
           Text(
             'Iniziato ${DateFormat('dd MMM, HH:mm').format(trip.startDate ?? DateTime.now())}',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
+              color: Colors.white.withValues(alpha: 0.8),
               fontSize: 14,
             ),
           ),
@@ -582,19 +602,27 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildCompactStat(IconData icon, String value) {
-    return Row(
-      children: [
-        Icon(icon, color: Colors.white70, size: 16),
-        const SizedBox(width: 6),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white70, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -615,7 +643,7 @@ class _HomePageState extends State<HomePage> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -660,7 +688,7 @@ class _HomePageState extends State<HomePage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Color(folder.color).withOpacity(0.1),
+                  color: Color(folder.color).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -797,20 +825,39 @@ class _HomePageState extends State<HomePage> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: invert ? Colors.white.withOpacity(0.2) : color.withOpacity(0.1),
+        color: invert
+            ? Colors.white.withValues(alpha: 0.2)
+            : color.withValues(alpha: 0.1),
         shape: BoxShape.circle,
       ),
       child: Icon(icon, color: invert ? Colors.white : color, size: 24),
     );
   }
 
-  void _showAddTripDialog() {
+  void _showAddTripDialog() async {
     final dbService = Provider.of<DatabaseService>(context, listen: false);
+    final locService = Provider.of<LocationService>(context, listen: false);
+
     showDialog(
       context: context,
       builder: (_) => AddTripDialog(
-        onTripAdded: (t) =>
-            dbService.saveTrip(t.copyWith(folderId: _selectedFolderId)),
+        onTripAdded: (t) async {
+          final tripToSave = t.copyWith(folderId: _selectedFolderId);
+          await dbService.saveTrip(tripToSave);
+
+          // Fai partire il tracking immediatamente
+          locService.clearTrack();
+          await locService.startTracking();
+
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TripDetailPage(trip: tripToSave),
+              ),
+            );
+          }
+        },
       ),
     );
   }

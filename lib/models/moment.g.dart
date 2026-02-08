@@ -79,6 +79,8 @@ class MomentTypeAdapter extends TypeAdapter<MomentType> {
         return MomentType.audio;
       case 3:
         return MomentType.video;
+      case 4:
+        return MomentType.dayEnd;
       default:
         return MomentType.note;
     }
@@ -98,6 +100,9 @@ class MomentTypeAdapter extends TypeAdapter<MomentType> {
         break;
       case MomentType.video:
         writer.writeByte(3);
+        break;
+      case MomentType.dayEnd:
+        writer.writeByte(4);
         break;
     }
   }

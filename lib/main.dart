@@ -8,9 +8,11 @@ import 'services/location_service.dart';
 import 'services/notification_service.dart';
 import 'services/geofencing_manager.dart';
 import 'services/missing_memory_service.dart';
-import 'screens/home_page.dart';
+import 'screens/splash_screen.dart';
 
 import 'models/trip_folder.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 import 'package:google_maps_flutter_android/google_maps_flutter_android.dart';
 import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart';
 
@@ -18,12 +20,16 @@ void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Forza Hybrid Composition per risolvere potenziali crash su alcuni driver GPU Android
+    // Forza Hybrid Composition per Google Maps su Android
     final GoogleMapsFlutterPlatform mapsImplementation =
         GoogleMapsFlutterPlatform.instance;
     if (mapsImplementation is GoogleMapsFlutterAndroid) {
       mapsImplementation.useAndroidViewSurface = true;
     }
+
+    // Inizializza la localizzazione italiana per le date
+    Intl.defaultLocale = 'it_IT';
+    await initializeDateFormatting('it_IT', null);
 
     // Inizializza l'archiviazione locale Hive
     await Hive.initFlutter();
@@ -87,9 +93,8 @@ class _MyAppState extends State<MyApp> {
 
     // Ripete il controllo periodicamente (ogni 15 minuti)
     Future.delayed(const Duration(minutes: 15), () {
-      if (mounted) {
-        _startMissingMemoryChecker();
-      }
+      if (!mounted) return;
+      _startMissingMemoryChecker();
     });
   }
 
@@ -161,10 +166,10 @@ class _MyAppState extends State<MyApp> {
               fontWeight: FontWeight.bold,
             ),
           ),
-          splashColor: const Color(0xFF16697A).withOpacity(0.1),
-          highlightColor: const Color(0xFF16697A).withOpacity(0.05),
+          splashColor: const Color(0xFF16697A).withValues(alpha: 0.1),
+          highlightColor: const Color(0xFF16697A).withValues(alpha: 0.05),
         ),
-        home: const HomePage(),
+        home: const SplashScreen(),
       ),
     );
   }
